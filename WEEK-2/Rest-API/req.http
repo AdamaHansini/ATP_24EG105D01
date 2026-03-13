@@ -1,0 +1,73 @@
+###read all users
+
+GET http://localhost:2811/user-api/users
+
+
+### read a user by id
+###
+GET http://localhost:2811/user-api/users/1
+
+###updated a user
+###
+POST http://localhost:2811/user-api/users
+Content-Type: application/json
+
+{
+    "id":1,
+    "name":"hansini",
+    "age":20
+}
+
+###
+###
+PUT http://localhost:2811/user-api/users
+Content-Type: application/json
+
+{
+    "id":1,
+    "name":"hansini",
+    "age":19  
+}
+
+###
+DELETE http://localhost:2811/user-api/users/1
+### passing id,name,age through end points
+
+###
+GET http://localhost:2811/product-api/products
+
+###read user by id
+###
+GET http://localhost:2811/product-api/products/android
+
+
+
+
+
+
+###added a product
+POST http://localhost:2811/prduct-api/products
+Content-Type: application/json
+
+{
+    "id":2,
+    "name":"Laptop",
+    "brand":"mac",
+    "price":150000
+}
+
+###update the existing product
+###
+PUT http://localhost:2811/product-api/products
+Content-Type: application/json
+
+{
+    "id":1,
+    "name":"Mobile",
+    "product":"android",
+    "price":25000
+}
+
+###delete a product
+###
+DELETE http://localhost:2811/product-api/products/1
