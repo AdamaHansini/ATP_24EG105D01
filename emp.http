@@ -1,0 +1,29 @@
+### Create emp
+POST http://localhost:4000/emp-api/employees
+Content-Type: application/json
+
+{
+    "empname":"hansini",
+    "email":"hansini@mail.com",
+    "mobile":9999999,
+    "designation":"developer",
+    "companyName":"tcs"
+}
+
+### Read all emps
+GET http://localhost:4000/emp-api/employees
+
+### Update emp by id
+PUT http://localhost:4000/emp-api/employees/
+Content-Type: application/json
+
+{
+    "empname":"hansini",
+    "email":"hansiniadama@mail.com",
+    "mobile":9999999,
+    "designation":"developer",
+    "companyName":"tcs"
+}
+
+### Delete emp by id
+DELETE http://localhost:4000/emp-api/employees/
