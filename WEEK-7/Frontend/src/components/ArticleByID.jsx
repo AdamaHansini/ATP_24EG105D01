@@ -51,7 +51,7 @@ function ArticleByID() {
 
       try {
         const res = await axios.get(
-          `http://localhost:5000/user-api/article/${id}`,
+          `https://atp-24eg105d01-blogapp-6jve.onrender.com/user-api/article/${id}`,
           { withCredentials: true },
         );
 
@@ -120,7 +120,7 @@ function ArticleByID() {
     commentObj.articleId = article._id;
     console.log(commentObj);
     let res = await axios.put(
-      "http://localhost:5000/user-api/articles",
+      "https://atp-24eg105d01-blogapp-6jve.onrender.com/user-api/articles",
       commentObj,
       { withCredentials: true },
     );
