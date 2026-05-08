@@ -32,7 +32,7 @@ useEffect(()=>{
 
 const saveModifiedEmp=async(modifiedEmp)=>{
   //make HTTP PUT request
-  const res=await axios.put(`http://localhost:4000/emp-api/employees/${state._id}`,modifiedEmp)
+  const res=await axios.put(`https://atp-24eg105d01-employee.onrender.com/emp-api/employees/${state._id}`,modifiedEmp)
   if(res.status===200){
     //naviagte to ListOfEmployees
     navigate('/list')
