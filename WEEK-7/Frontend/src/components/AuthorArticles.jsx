@@ -33,7 +33,7 @@ function AuthorArticles() {
       try {
         setLoading(true);
         //read articles of current author
-        let res = await axios.get("http://localhost:5000/author-api/articles", {
+        let res = await axios.get("https://atp-24eg105d01-blogapp-6jve.onrender.com/author-api/articles", {
           withCredentials: true,
         });
         if (res.status === 200) {
