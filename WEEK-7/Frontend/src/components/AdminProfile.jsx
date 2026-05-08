@@ -25,7 +25,7 @@ function AdminProfile() {
   const fetchAccounts = async () => {
     try {
       setLoading(true);
-      const res = await axios.get("http://localhost:5000/admin-api/users", {
+      const res = await axios.get("https://atp-24eg105d01-blogapp-6jve.onrender.com/admin-api/users", {
         withCredentials: true,
       });
       setManagedAccounts(res.data.payload.users || []);
@@ -47,7 +47,7 @@ function AdminProfile() {
     try {
       const updatedStatus = !account.isUserActive;
       await axios.patch(
-        `http://localhost:5000/admin-api/users/${account._id}/status`,
+        `https://atp-24eg105d01-blogapp-6jve.onrender.com/admin-api/users/${account._id}/status`,
         { isUserActive: updatedStatus },
         { withCredentials: true },
       );
