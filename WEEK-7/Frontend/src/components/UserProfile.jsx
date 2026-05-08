@@ -28,7 +28,7 @@ function UserProfile() {
       setLoading(true);
       try {
         //read articles of all authors
-        let res = await axios.get("http://localhost:5000/user-api/articles", {
+        let res = await axios.get("https://atp-24eg105d01-blogapp-6jve.onrender.com/user-api/articles", {
           withCredentials: true,
         });
         //update articles state
