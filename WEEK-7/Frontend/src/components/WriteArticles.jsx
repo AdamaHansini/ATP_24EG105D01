@@ -39,7 +39,7 @@ function WriteArticles() {
       setLoading(true);
       //make POST req to save new article
       let res = await axios.post(
-        "http://localhost:5000/author-api/article",
+        "https://atp-24eg105d01-blogapp-6jve.onrender.com/author-api/article",
         articleObj,
         { withCredentials: true },
       );
