@@ -1,6 +1,6 @@
 import { useParams, useLocation, useNavigate } from "react-router";
 import { useEffect, useState } from "react";
-import axios from "axios";
+import api from "../api/axios";
 import { useAuth } from "../store/authStore";
 import {
   articlePageWrapper,
@@ -51,8 +51,8 @@ function ArticleByID() {
       setLoading(true);
 
       try {
-        const res = await axios.get(
-          `http://localhost:5000/user-api/article/${id}`,
+        const res = await api.get(
+          `/user-api/article/${id}`,
           { withCredentials: true },
         );
 
@@ -85,8 +85,8 @@ function ArticleByID() {
     if (!window.confirm(confirmMsg)) return;
 
     try {
-      const res = await axios.patch(
-        "http://localhost:5000/author-api/articles",
+      const res = await api.patch(
+        "/author-api/articles",
         { articleId: article._id, isArticleActive: newStatus },
         { withCredentials: true },
       );
@@ -120,8 +120,8 @@ function ArticleByID() {
     //add artcileId
     commentObj.articleId = article._id;
     console.log(commentObj);
-    let res = await axios.put(
-      "http://localhost:5000/user-api/articles",
+    let res = await api.put(
+      "/user-api/articles",
       commentObj,
       { withCredentials: true },
     );
