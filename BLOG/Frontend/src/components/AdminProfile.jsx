@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
+import axios from "../api/axios";
 import { useAuth } from "../store/authStore";
 import { toast } from "react-hot-toast";
 import { useNavigate } from "react-router";
@@ -28,7 +28,7 @@ function AdminProfile() {
   const fetchAccounts = async () => {
     try {
       setLoading(true);
-      const res = await axios.get("http://localhost:5000/admin-api/users", {
+      const res = await api.get("/admin-api/users", {
         withCredentials: true,
       });
       setManagedAccounts(res.data.payload.users || []);
@@ -54,8 +54,8 @@ function AdminProfile() {
   const toggleStatus = async (account) => {
     try {
       const updatedStatus = !account.isUserActive;
-      await axios.patch(
-        `http://localhost:5000/admin-api/users/${account._id}/status`,
+       await api.patch(
+        `/admin-api/users/${account._id}/status`,
         { isUserActive: updatedStatus },
         { withCredentials: true },
       );
