@@ -1,6 +1,6 @@
 import { useForm } from "react-hook-form";
 import { useState } from "react";
-import axios from "axios";
+import api from "../api/axios";
 import { toast } from "react-hot-toast";
 import { useNavigate } from "react-router";
 
@@ -37,8 +37,8 @@ function WriteArticles() {
       //set loading true
       setLoading(true);
       //make POST req to save new article
-      let res = await axios.post(
-        "http://localhost:5000/author-api/article",
+      let res = await api.post(
+        "/author-api/article",
         articleObj,
         { withCredentials: true },
       );
