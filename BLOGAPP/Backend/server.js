@@ -26,13 +26,30 @@ if (dnsServers?.length) {
 
 //create express app
 const app = exp();
-//enable cors
-app.use(cors({
-  origin:['http://localhost:5173'],
-  credentials:true
-}))
+
+const allowedOrigins = [
+  process.env.CLIENT_URL,
+  process.env.FRONTEND_URL,
+  "http://localhost:5173",
+]
+  .filter(Boolean)
+  .map((origin) => origin.replace(/\/$/, ""));
+
+// enable cors
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      callback(new Error("Not allowed by CORS"));
+    },
+    credentials: true,
+  }),
+);
+
 //add cookie parser middeleware
-app.use(cookieParser())
+app.use(cookieParser());
 //body parser middleware
 app.use(exp.json());
 //path level middlewares
