@@ -4,6 +4,8 @@ import axios from "axios";
 import { toast } from "react-hot-toast";
 import { useNavigate } from "react-router";
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 import {
   formCard,
   formTitle,
@@ -38,7 +40,7 @@ function WriteArticles() {
       setLoading(true);
       //make POST req to save new article
       let res = await axios.post(
-        "http://localhost:5000/author-api/article",
+        `${API_URL}/author-api/article`,
         articleObj,
         { withCredentials: true },
       );

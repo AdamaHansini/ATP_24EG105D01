@@ -9,6 +9,8 @@ import { NavLink, useNavigate } from "react-router";
 import { useState } from "react";
 import axios from "axios";
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 function Register() {
   const authCard =
     "w-full max-w-lg bg-white border border-[#ead7bd] rounded-md px-6 py-7";
@@ -52,7 +54,7 @@ function Register() {
       //start loading
       setLoading(true);
       //make HTTP POST req to create User in backend
-      let res = await axios.post("http://localhost:5000/auth/users", formData, {
+      let res = await axios.post(`${API_URL}/auth/users`, formData, {
         withCredentials: true,
       });
 

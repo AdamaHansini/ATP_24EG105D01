@@ -4,6 +4,8 @@ import { useNavigate } from "react-router";
 import axios from "axios";
 import { useEffect, useState } from "react";
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 import {
   articleGrid,
   articleCardClass,
@@ -28,7 +30,7 @@ function UserProfile() {
       setLoading(true);
       try {
         //read articles of all authors
-        let res = await axios.get("http://localhost:5000/user-api/articles", {
+        let res = await axios.get(`${API_URL}/user-api/articles`, {
           withCredentials: true,
         });
         //update articles state

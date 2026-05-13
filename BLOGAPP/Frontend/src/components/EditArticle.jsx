@@ -4,6 +4,8 @@ import { useEffect } from "react";
 import axios from "axios";
 import { toast } from "react-hot-toast";
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 import {
   formCard,
   formTitle,
@@ -42,7 +44,7 @@ function EditArticle() {
       modifiedArticle.articleId = article._id;
       //make PUT req to update article
       let res = await axios.put(
-        "http://localhost:5000/author-api/articles",
+        `${API_URL}/author-api/articles`,
         modifiedArticle,
         { withCredentials: true },
       );
