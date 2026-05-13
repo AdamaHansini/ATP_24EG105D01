@@ -11,6 +11,17 @@ import { uploadToCloudinary } from "../config/cloudinaryUpload.js";
 import cloudinary from "../config/cloudinary.js";
 config();
 
+const secureCookies =
+  process.env.COOKIE_SECURE === "true" ||
+  process.env.NODE_ENV === "production" ||
+  process.env.RENDER === "true";
+
+const authCookieOptions = {
+  httpOnly: true,
+  secure: secureCookies,
+  sameSite: secureCookies ? "none" : "lax",
+};
+
 //Route for register
 commonApp.post("/users", upload.single("profileImageUrl"), async (req, res, next) => {
   let cloudinaryResult;
@@ -92,11 +103,7 @@ commonApp.post("/login", async (req, res) => {
     },
   );
 
-  res.cookie("token", signedToken, {
-    httpOnly: true,
-    secure: false,
-    sameSite: "lax",
-  });
+  res.cookie("token", signedToken, authCookieOptions);
   let userObj = user.toObject();
   delete userObj.password;
 
@@ -106,11 +113,7 @@ commonApp.post("/login", async (req, res) => {
 //Route for Logout
 commonApp.get("/logout", (req, res) => {
   //delete token from cookie storage
-  res.clearCookie("token", {
-    httpOnly: true,
-    secure: false,
-    sameSite: "lax",
-  });
+  res.clearCookie("token", authCookieOptions);
   //send res
   res.status(200).json({ message: "Logout success" });
 });

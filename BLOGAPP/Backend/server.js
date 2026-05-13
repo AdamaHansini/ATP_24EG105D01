@@ -7,7 +7,7 @@ import { authorApp } from "./APIs/AuthorAPI.js";
 import { adminApp } from "./APIs/AdminAPI.js";
 import { commonApp } from "./APIs/CommonAPI.js";
 import cookieParser from "cookie-parser";
-import cors from 'cors'
+import cors from "cors";
 config();
 
 const dnsServers = process.env.DNS_SERVERS?.split(",")
@@ -30,16 +30,27 @@ const app = exp();
 const allowedOrigins = [
   process.env.CLIENT_URL,
   process.env.FRONTEND_URL,
+  process.env.CORS_ORIGINS,
   "http://localhost:5173",
 ]
   .filter(Boolean)
-  .map((origin) => origin.replace(/\/$/, ""));
+  .flatMap((origin) => origin.split(","))
+  .map((origin) => origin.trim().replace(/\/$/, ""))
+  .filter(Boolean);
+
+const allowedOriginPatterns = [
+  /^https:\/\/24eg105d01-blogapp(?:-[a-z0-9-]+)*\.vercel\.app$/,
+];
+
+const isAllowedOrigin = (origin) =>
+  allowedOrigins.includes(origin) ||
+  allowedOriginPatterns.some((pattern) => pattern.test(origin));
 
 // enable cors
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (!origin || isAllowedOrigin(origin)) {
         return callback(null, true);
       }
       callback(new Error("Not allowed by CORS"));
