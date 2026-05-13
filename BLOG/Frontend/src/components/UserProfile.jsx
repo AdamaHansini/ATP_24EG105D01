@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 
 import axios from "axios";
 import { useEffect, useState } from "react";
+import { apiUrl } from "../config/api";
 
 import {
   articleGrid,
@@ -28,7 +29,7 @@ function UserProfile() {
       setLoading(true);
       try {
         //read articles of all authors
-        let res = await axios.get("http://localhost:5000/user-api/articles", {
+        let res = await axios.get(apiUrl("/user-api/articles"), {
           withCredentials: true,
         });
         //update articles state

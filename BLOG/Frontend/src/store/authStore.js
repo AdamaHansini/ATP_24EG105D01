@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import axios from "axios";
+import { apiUrl } from "../config/api";
 
 export const useAuth = create((set) => ({
   currentUser: null,
@@ -17,7 +18,7 @@ export const useAuth = create((set) => ({
         error: null,
       });
       //make api call
-      let res = await axios.post("http://localhost:5000/auth/login", userCred, {
+      let res = await axios.post(apiUrl("/auth/login"), userCred, {
         withCredentials: true,
       });
       //update state
@@ -44,7 +45,7 @@ export const useAuth = create((set) => ({
     try {
       //set loading state
       //make logout api req
-      let res = await axios.get("http://localhost:5000/auth/logout", {
+      let res = await axios.get(apiUrl("/auth/logout"), {
         withCredentials: true,
       });
       //update state
@@ -69,7 +70,7 @@ export const useAuth = create((set) => ({
   checkAuth: async () => {
     try {
       set({ loading: true });
-      const res = await axios.get("http://localhost:5000/auth/check-auth", {
+      const res = await axios.get(apiUrl("/auth/check-auth"), {
         withCredentials: true,
       });
 

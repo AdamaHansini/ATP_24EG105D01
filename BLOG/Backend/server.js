@@ -7,7 +7,7 @@ import { authorApp } from "./APIs/AuthorAPI.js";
 import { adminApp } from "./APIs/AdminAPI.js";
 import { commonApp } from "./APIs/CommonAPI.js";
 import cookieParser from "cookie-parser";
-import cors from 'cors'
+import cors from "cors";
 config();
 
 const dnsServers = process.env.DNS_SERVERS?.split(",")
@@ -26,11 +26,28 @@ if (dnsServers?.length) {
 
 //create express app
 const app = exp();
+const allowedOrigins = [
+  "https://atp-24-eg-105-d01-ze53.vercel.app",
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "http://localhost:3000",
+  ...(process.env.FRONTEND_URLS?.split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean) || []),
+];
+
 //enable cors
-app.use(cors({
-  origin:['http://localhost:5173'],
-  credentials:true
-}))
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      callback(new Error(`CORS blocked origin: ${origin}`));
+    },
+    credentials: true,
+  }),
+);
 //add cookie parser middeleware
 app.use(cookieParser())
 //body parser middleware

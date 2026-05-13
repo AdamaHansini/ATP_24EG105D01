@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router";
 import { useAuth } from "../store/authStore";
+import { apiUrl } from "../config/api";
 
 import {
   articleCardClass,
@@ -33,7 +34,7 @@ function AuthorArticles() {
       try {
         setLoading(true);
         //read articles of current author
-        let res = await axios.get("http://localhost:5000/author-api/articles", {
+        let res = await axios.get(apiUrl("/author-api/articles"), {
           withCredentials: true,
         });
         if (res.status === 200) {
@@ -42,7 +43,11 @@ function AuthorArticles() {
         //update articles state
       } catch (err) {
         console.log(err);
-        setError(err.response?.data?.error || "Failed to fetch articles");
+        setError(
+          err.response?.data?.message ||
+            err.response?.data?.error ||
+            "Failed to fetch articles",
+        );
       } finally {
         setLoading(false);
       }

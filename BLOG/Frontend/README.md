@@ -1,41 +1,53 @@
-Blog App Frontend
+# Blog App Frontend
 
-This is the frontend of the Blog Application developed using React and Vite.
+React and Vite frontend for the blog application.
 
-Features
-User registration and login
-Separate pages for users, authors, and admins
-Protected routes
-Read and manage articles
-Author dashboard
-Admin dashboard
-Logout functionality
-Technologies Used
-React
-Vite
-React Router
-Zustand
-Axios
-Tailwind CSS
-Setup
-Install Dependencies
+## Setup
+
+1. Install dependencies:
+
+```bash
 npm install
-Start Frontend
+```
+
+2. Create a `.env` file in the `Frontend` folder:
+
+```env
+VITE_API_URL=your_backend_url
+```
+
+Example for local backend:
+
+```env
+VITE_API_URL=http://localhost:5000
+```
+
+3. Start the frontend:
+
+```bash
 npm run dev
+```
 
-Frontend runs on:
+The frontend runs at:
 
+```text
 http://localhost:5173
+```
 
-Backend should run on:
+## Features
 
-http://localhost:5000
-Main Pages
-Home
-Register
-Login
-User Profile
-Author Profile
-Admin Dashboard
-Article Details
-Edit Article
+- User registration and login
+- User, author, and admin pages
+- Protected routes
+- Article reading and management
+- Author dashboard
+- Admin dashboard
+- Logout functionality
+
+## Scripts
+
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm run preview` - Preview production build
+- `npm run lint` - Run ESLint
+
