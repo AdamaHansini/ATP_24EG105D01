@@ -1,6 +1,6 @@
 import './App.css'
 import NavBar from './components/NavBar.jsx'
-import UserList from './components/UsersList.jsx'
+import UserList from './components/UserList.jsx'
 import Footer from './components/Footer.jsx'
 
 function App(){

@@ -1,0 +1,62 @@
+body {
+    margin: 0;
+}
+
+
+.topbar {
+    background-color: #eee;
+    padding: 10px 20px;
+    font-size: 14px;
+}
+
+
+.Edits {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: red;
+    color: white;
+    padding: 50px;
+}
+
+.left {
+    width: 60%;
+}
+
+.left h1 {
+    margin-bottom: 10px;
+}
+
+.left p {
+    font-size: 14px;
+}
+
+.right img {
+    width: 150px;   
+    border-radius: 50%;
+}
+
+
+.cards {
+    display: flex;
+}
+
+.card {
+    flex: 1;
+    background-color: #8b0000;
+    color: white;
+    padding: 25px;
+    border-right: 2px solid red;
+}
+
+.card h3 {
+    margin-bottom: 10px;
+}
+
+.card p {
+    font-size: 13px;
+}
+
+.card:last-child {
+    border-right: none;
+}
