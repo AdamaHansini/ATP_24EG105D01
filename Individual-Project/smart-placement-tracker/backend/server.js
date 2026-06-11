@@ -1,5 +1,4 @@
 import express from 'express';
-import cors from 'cors';
 import dotenv from 'dotenv';
 import connectDB from './config/db.js';
 import { errorHandler, notFound } from './middleware/errorMiddleware.js';
@@ -21,22 +20,28 @@ const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
   'https://smart-placement-tracker-two.vercel.app',
-  /https:\/\/smart-placement-tracker.*\.vercel\.app$/,  // covers preview deployments too
 ];
 
-// Middleware
-app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (e.g. curl, Postman, server-to-server)
-    if (!origin) return callback(null, true);
-    const allowed = allowedOrigins.some((o) =>
-      typeof o === 'string' ? o === origin : o.test(origin)
-    );
-    if (allowed) return callback(null, true);
-    callback(new Error(`CORS: origin ${origin} not allowed`));
-  },
-  credentials: true,
-}));
+// CORS — set headers on EVERY response (including error paths)
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  const allowed =
+    !origin ||
+    allowedOrigins.includes(origin) ||
+    /^https:\/\/smart-placement-tracker.*\.vercel\.app$/.test(origin);
+
+  if (allowed && origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+
+  // Answer preflight immediately
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
