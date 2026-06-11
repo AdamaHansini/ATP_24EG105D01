@@ -5,7 +5,7 @@
   "description": "Backend for Smart Placement Tracker",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "nodemon server.js",
     "dev": "nodemon server.js"
   },
   "dependencies": {
