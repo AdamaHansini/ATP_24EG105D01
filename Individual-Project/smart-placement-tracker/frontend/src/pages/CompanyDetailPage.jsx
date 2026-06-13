@@ -58,14 +58,16 @@ const CompanyDetailPage = () => {
     const notes = reviewState[appId]?.notes || '';
     setBusyId(appId);
     try {
-      await axios.put(`/api/applications/${appId}/review-round1`, { approved, notes }, { headers });
+      const r1 = await axios.put(`/api/applications/${appId}/review-round1`, { approved, notes }, { headers });
       toast.success(approved ? 'Resume approved! Inviting to Round 2...' : 'Resume rejected');
-      // If approved, invite to Round 2
+      let updatedApp = r1.data.application;
+      // If approved, invite to Round 2 and use that response
       if (approved) {
-        await axios.put(`/api/applications/${appId}/invite-round2`, {}, { headers });
+        const r2 = await axios.put(`/api/applications/${appId}/invite-round2`, {}, { headers });
+        updatedApp = r2.data.application;
       }
-      const { data } = await axios.get(`/api/applications/company/${id}`, { headers });
-      setApplications(data);
+      // Patch local state — no extra GET needed
+      setApplications(prev => prev.map(a => a._id === appId ? { ...a, ...updatedApp } : a));
       setExpandedApp(null);
       setReviewState(prev => ({ ...prev, [appId]: {} }));
     } catch (err) {
@@ -79,10 +81,10 @@ const CompanyDetailPage = () => {
     const notes = round2State[appId]?.notes || '';
     setBusyId(appId);
     try {
-      await axios.put(`/api/applications/${appId}/evaluate-round2`, { approved, notes }, { headers });
+      const { data } = await axios.put(`/api/applications/${appId}/evaluate-round2`, { approved, notes }, { headers });
       toast.success(approved ? 'Moved to pending placement' : 'Rejected after Round 2');
-      const { data } = await axios.get(`/api/applications/company/${id}`, { headers });
-      setApplications(data);
+      // Patch local state — no extra GET needed
+      setApplications(prev => prev.map(a => a._id === appId ? { ...a, ...data.application } : a));
       setExpandedApp(null);
       setRound2State(prev => ({ ...prev, [appId]: {} }));
     } catch (err) {
@@ -96,10 +98,10 @@ const CompanyDetailPage = () => {
     const notes = placementState[appId]?.notes || '';
     setBusyId(appId);
     try {
-      await axios.put(`/api/applications/${appId}/final-decision`, { placed, notes }, { headers });
+      const { data } = await axios.put(`/api/applications/${appId}/final-decision`, { placed, notes }, { headers });
       toast.success(placed ? '🎉 Student Placed!' : 'Student not placed');
-      const { data } = await axios.get(`/api/applications/company/${id}`, { headers });
-      setApplications(data);
+      // Patch local state — no extra GET needed
+      setApplications(prev => prev.map(a => a._id === appId ? { ...a, ...data.application } : a));
       setExpandedApp(null);
       setPlacementState(prev => ({ ...prev, [appId]: {} }));
     } catch (err) {
