@@ -76,8 +76,8 @@ const reviewRound1Resume = async (req, res, next) => {
       application.round1.reviewedAt = new Date();
       application.round1.tpoReviewNotes = notes || '';
 
-      // Send approval email
-      await sendEmail(
+      // Fire-and-forget: do NOT await so the API responds instantly
+      sendEmail(
         studentEmail,
         `Great News! Your Resume is Approved - ${companyName}`,
         `<p>Dear <strong>${studentName}</strong>,</p>
@@ -92,8 +92,8 @@ const reviewRound1Resume = async (req, res, next) => {
       application.round1.reviewedAt = new Date();
       application.round1.tpoReviewNotes = notes || 'Resume not selected';
 
-      // Send rejection email
-      await sendEmail(
+      // Fire-and-forget: do NOT await so the API responds instantly
+      sendEmail(
         studentEmail,
         `Update on Your Application - ${companyName}`,
         `<p>Dear <strong>${studentName}</strong>,</p>
@@ -138,11 +138,11 @@ const inviteToRound2 = async (req, res, next) => {
 
     await application.save();
 
-    // Send invitation email with questions
+    // Fire-and-forget: do NOT await so the API responds instantly
     const studentEmail = application.studentId.userId.email;
     const studentName = application.studentId.userId.name;
 
-    await sendEmail(
+    sendEmail(
       studentEmail,
       `Round 2 Invitation - HR Round - ${application.companyId.name}`,
       `<p>Dear <strong>${studentName}</strong>,</p>
@@ -196,8 +196,8 @@ const evaluateRound2 = async (req, res, next) => {
       application.status = 'pending_placement';
       application.round2.approved = true;
 
-      // Send approval for next stage email
-      await sendEmail(
+      // Fire-and-forget: do NOT await so the API responds instantly
+      sendEmail(
         studentEmail,
         `Excellent Performance in Round 2 - ${application.companyId.name}`,
         `<p>Dear <strong>${studentName}</strong>,</p>
@@ -210,8 +210,8 @@ const evaluateRound2 = async (req, res, next) => {
       application.status = 'round2_rejected';
       application.round2.approved = false;
 
-      // Send rejection email
-      await sendEmail(
+      // Fire-and-forget: do NOT await so the API responds instantly
+      sendEmail(
         studentEmail,
         `Round 2 Result - ${application.companyId.name}`,
         `<p>Dear <strong>${studentName}</strong>,</p>
@@ -267,8 +267,8 @@ const makeFinalDecision = async (req, res, next) => {
         await student.save();
       }
 
-      // Send final placement email
-      await sendEmail(
+      // Fire-and-forget: do NOT await so the API responds instantly
+      sendEmail(
         studentEmail,
         `🎉 Congratulations! You Are PLACED - ${application.companyId.name}`,
         `<p>Dear <strong>${studentName}</strong>,</p>
@@ -283,8 +283,8 @@ const makeFinalDecision = async (req, res, next) => {
       application.status = 'rejected';
       application.placementNotes = notes || 'Not placed';
 
-      // Send final rejection email
-      await sendEmail(
+      // Fire-and-forget: do NOT await so the API responds instantly
+      sendEmail(
         studentEmail,
         `Final Update - ${application.companyId.name}`,
         `<p>Dear <strong>${studentName}</strong>,</p>

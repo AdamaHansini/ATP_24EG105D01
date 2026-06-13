@@ -31,6 +31,7 @@ const CompanyDetailPage = () => {
   const [reviewState, setReviewState] = useState({});
   const [round2State, setRound2State] = useState({});
   const [placementState, setPlacementState] = useState({});
+  const [busyId, setBusyId] = useState(null); // tracks which app is being actioned
 
   useEffect(() => {
     const fetch = async () => {
@@ -55,6 +56,7 @@ const CompanyDetailPage = () => {
 
   const handleReviewRound1 = async (appId, approved) => {
     const notes = reviewState[appId]?.notes || '';
+    setBusyId(appId);
     try {
       await axios.put(`/api/applications/${appId}/review-round1`, { approved, notes }, { headers });
       toast.success(approved ? 'Resume approved! Inviting to Round 2...' : 'Resume rejected');
@@ -68,11 +70,14 @@ const CompanyDetailPage = () => {
       setReviewState(prev => ({ ...prev, [appId]: {} }));
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed');
+    } finally {
+      setBusyId(null);
     }
   };
 
   const handleEvaluateRound2 = async (appId, approved) => {
     const notes = round2State[appId]?.notes || '';
+    setBusyId(appId);
     try {
       await axios.put(`/api/applications/${appId}/evaluate-round2`, { approved, notes }, { headers });
       toast.success(approved ? 'Moved to pending placement' : 'Rejected after Round 2');
@@ -82,11 +87,14 @@ const CompanyDetailPage = () => {
       setRound2State(prev => ({ ...prev, [appId]: {} }));
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed');
+    } finally {
+      setBusyId(null);
     }
   };
 
   const handleFinalDecision = async (appId, placed) => {
     const notes = placementState[appId]?.notes || '';
+    setBusyId(appId);
     try {
       await axios.put(`/api/applications/${appId}/final-decision`, { placed, notes }, { headers });
       toast.success(placed ? '🎉 Student Placed!' : 'Student not placed');
@@ -96,6 +104,8 @@ const CompanyDetailPage = () => {
       setPlacementState(prev => ({ ...prev, [appId]: {} }));
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed');
+    } finally {
+      setBusyId(null);
     }
   };
 
@@ -234,17 +244,19 @@ const CompanyDetailPage = () => {
                               <div style={{ display: 'flex', gap: 6 }}>
                                 <button
                                   onClick={() => handleReviewRound1(app._id, true)}
+                                  disabled={busyId === app._id}
                                   className="btn btn-primary"
                                   style={{ flex: 1 }}
                                 >
-                                  ✅ Approve
+                                  {busyId === app._id ? '⏳ Processing...' : '✅ Approve'}
                                 </button>
                                 <button
                                   onClick={() => handleReviewRound1(app._id, false)}
+                                  disabled={busyId === app._id}
                                   className="btn btn-danger"
                                   style={{ flex: 1 }}
                                 >
-                                  ❌ Reject
+                                  {busyId === app._id ? '⏳ Processing...' : '❌ Reject'}
                                 </button>
                               </div>
                             </div>
@@ -275,17 +287,19 @@ const CompanyDetailPage = () => {
                               <div style={{ display: 'flex', gap: 6 }}>
                                 <button
                                   onClick={() => handleEvaluateRound2(app._id, true)}
+                                  disabled={busyId === app._id}
                                   className="btn btn-primary"
                                   style={{ flex: 1 }}
                                 >
-                                  ✅ Approve
+                                  {busyId === app._id ? '⏳ Processing...' : '✅ Approve'}
                                 </button>
                                 <button
                                   onClick={() => handleEvaluateRound2(app._id, false)}
+                                  disabled={busyId === app._id}
                                   className="btn btn-danger"
                                   style={{ flex: 1 }}
                                 >
-                                  ❌ Reject
+                                  {busyId === app._id ? '⏳ Processing...' : '❌ Reject'}
                                 </button>
                               </div>
                             </div>
@@ -308,17 +322,19 @@ const CompanyDetailPage = () => {
                               <div style={{ display: 'flex', gap: 6 }}>
                                 <button
                                   onClick={() => handleFinalDecision(app._id, true)}
+                                  disabled={busyId === app._id}
                                   className="btn btn-primary"
                                   style={{ flex: 1 }}
                                 >
-                                  🎉 Place Student
+                                  {busyId === app._id ? '⏳ Processing...' : '🎉 Place Student'}
                                 </button>
                                 <button
                                   onClick={() => handleFinalDecision(app._id, false)}
+                                  disabled={busyId === app._id}
                                   className="btn btn-danger"
                                   style={{ flex: 1 }}
                                 >
-                                  ❌ Don't Place
+                                  {busyId === app._id ? '⏳ Processing...' : "❌ Don't Place"}
                                 </button>
                               </div>
                             </div>
