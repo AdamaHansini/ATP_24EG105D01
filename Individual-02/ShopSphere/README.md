@@ -186,7 +186,7 @@ The frontend will run on `http://localhost:5173`. Set `VITE_API_URL=/api` for th
 ### Production deployment environment
 
 - **Vercel:** set `VITE_API_URL=https://shopsphere-qfs6.onrender.com` and redeploy the frontend.
-- **Render:** in the backend service's **Environment** settings, configure `MONGODB_URI`, `JWT_SECRET`, and `FRONTEND_URL=https://shopsphere-chi-virid.vercel.app`, plus any enabled AI, staff-account, or email credentials. `JWT_SECRET` must contain at least 32 characters; generate a strong value locally with `node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'))"`, then paste it directly into Render without sharing or committing it. Save the settings and redeploy the backend.
+- **Render:** in the backend service's **Environment** settings, configure `MONGODB_URI`, `JWT_SECRET`, and `FRONTEND_URL=https://shopsphere-chi-virid.vercel.app,https://shopsphere-2hjy3wq2k-adamahansinis-projects.vercel.app`, plus any enabled AI, staff-account, or email credentials. `JWT_SECRET` must contain at least 32 characters; generate a strong value locally with `node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'))"`, then paste it directly into Render without sharing or committing it. Save the settings and redeploy the backend.
 - Keep MongoDB, JWT, Gemini, staff-account, and email credentials only in Render/backend environment variables. Do not prefix them with `VITE_`. Changing `JWT_SECRET` invalidates existing login tokens, so users will need to sign in again.
 
 ---

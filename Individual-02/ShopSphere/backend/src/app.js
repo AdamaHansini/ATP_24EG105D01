@@ -23,6 +23,8 @@ const app = express();
 // Standard middlewares
 const allowedOrigins = [
   'http://localhost:5173',
+  'https://shopsphere-chi-virid.vercel.app',
+  'https://shopsphere-2hjy3wq2k-adamahansinis-projects.vercel.app',
   ...(process.env.FRONTEND_URL || '').split(',').map((origin) => origin.trim()),
 ].filter(Boolean);
 
