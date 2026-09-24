@@ -132,6 +132,7 @@ export async function login(req, res, next) {
     const user = await User.findOne({ email: normalizedEmail });
 
     if (!user) {
+      console.warn('[auth] Login rejected: account not found.');
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password.',
@@ -149,6 +150,7 @@ export async function login(req, res, next) {
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
+      console.warn('[auth] Login rejected: password did not match.');
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password.',
@@ -158,6 +160,7 @@ export async function login(req, res, next) {
 
     // If the frontend sends an expected role, validate it against the real MongoDB role
     if (requestedRole && requestedRole !== user.role) {
+      console.warn('[auth] Login rejected: requested role does not match the account role.');
       return res.status(401).json({
         success: false,
         message: `Login failed. This account does not have the '${requestedRole}' role.`,

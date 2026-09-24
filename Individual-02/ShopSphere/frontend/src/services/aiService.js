@@ -4,7 +4,7 @@ import { api } from './api.js';
 export const aiService = {
   // SIGNATURE FEATURE 1: AI Product Tag & Category Predictor
   predictProduct: async (productDetails) => {
-    const res = await api.post('/ai/predict-product', productDetails);
+    const res = await api.post('/ai/predict-product', productDetails, { timeout: 45000 });
     return res.data;
   },
 

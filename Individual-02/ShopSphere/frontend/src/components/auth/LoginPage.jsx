@@ -90,8 +90,8 @@ export default function LoginPage() {
 
     try {
       setSubmitting(true);
-      // Do not send a role for customer/seller login — backend derives it from the DB
-      const res = await login(email, password, role);
+      // Let MongoDB be the source of truth for the account role at login.
+      const res = await login(email, password);
       setSuccessMsg('Authentication successful! Redirecting...');
       const target = getDestination(res?.role || res?.user?.role);
       setTimeout(() => navigate(target, { replace: true }), 400);

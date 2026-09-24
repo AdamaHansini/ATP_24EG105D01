@@ -30,7 +30,7 @@ export default function ProductDetailModal({
   onSelectProduct,
 }) {
   const { addItem } = useCart();
-  const { isWishlisted, addItem: addToWishlist, removeItem: removeFromWishlist } = useWishlist();
+  const { canUseWishlist, isWishlisted, addItem: addToWishlist, removeItem: removeFromWishlist } = useWishlist();
 
   const [selectedImage, setSelectedImage] = useState(0);
   const [quantity, setQuantity] = useState(1);
@@ -233,7 +233,7 @@ export default function ProductDetailModal({
                       </p>
                     )}
                   </div>
-                  <button
+                  {canUseWishlist && <button
                     onClick={handleWishlistToggle}
                     className={`p-2.5 rounded-xl border transition-all ${
                       wishlisted
@@ -243,7 +243,7 @@ export default function ProductDetailModal({
                     title={wishlisted ? 'Saved to Wishlist' : 'Add to Wishlist for Price Drops'}
                   >
                     <Heart className={`w-5 h-5 ${wishlisted ? 'fill-current' : ''}`} />
-                  </button>
+                  </button>}
                 </div>
 
                 {/* Short Description */}

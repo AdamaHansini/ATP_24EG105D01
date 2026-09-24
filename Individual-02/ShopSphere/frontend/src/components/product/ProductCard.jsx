@@ -7,7 +7,7 @@ import Badge from '../ui/Badge.jsx';
 
 export default function ProductCard({ product, onSelectProduct }) {
   const { addItem } = useCart();
-  const { isWishlisted, addItem: addToWishlist, removeItem: removeFromWishlist } = useWishlist();
+  const { canUseWishlist, isWishlisted, addItem: addToWishlist, removeItem: removeFromWishlist } = useWishlist();
   const [added, setAdded] = useState(false);
 
   if (!product) return null;
@@ -53,7 +53,7 @@ export default function ProductCard({ product, onSelectProduct }) {
           ) : null}
         </div>
 
-        <button
+        {canUseWishlist && <button
           type="button"
           onClick={handleWishlistToggle}
           className={`pointer-events-auto p-2 rounded-full backdrop-blur-md transition-all shadow-xs ${
@@ -65,7 +65,7 @@ export default function ProductCard({ product, onSelectProduct }) {
           aria-label={wishlisted ? 'Remove from Wishlist' : 'Add to Wishlist'}
         >
           <Heart className={`w-3.5 h-3.5 ${wishlisted ? 'fill-current' : ''}`} />
-        </button>
+        </button>}
       </div>
 
       {/* Product Image */}

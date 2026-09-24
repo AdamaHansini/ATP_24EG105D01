@@ -1,4 +1,4 @@
-import { getAiClient } from './aiClient.js';
+import { getAiClient, toAiProviderError } from './aiClient.js';
 import { Category } from '../models/index.js';
 
 export async function predictProductTaxonomy({
@@ -42,20 +42,25 @@ Return only a JSON object matching this schema:
   "confidence": 0.0
 }`;
 
-  let data;
+  let response;
   try {
-    const response = await ai.models.generateContent({
+    response = await ai.models.generateContent({
       model: 'gemini-3.8-flash',
       contents: prompt,
       config: { responseMimeType: 'application/json', temperature: 0.2 },
     });
-    data = JSON.parse(response.text.trim());
   } catch (cause) {
-    if (cause.statusCode) throw cause;
-    console.error('[ai] Classification request failed:', cause.name, cause.statusCode || cause.code);
-    const error = new Error('AI classification is temporarily unavailable. Please try again.');
+    throw toAiProviderError(cause, 'Product classification request');
+  }
+
+  let data;
+  try {
+    data = JSON.parse(response.text.trim());
+  } catch {
+    const error = new Error('The AI provider returned an unreadable classification. Please try again.');
     error.statusCode = 502;
-    error.errorCode = 'AI_PROVIDER_ERROR';
+    error.errorCode = 'AI_INVALID_RESPONSE';
+    error.expose = true;
     throw error;
   }
 

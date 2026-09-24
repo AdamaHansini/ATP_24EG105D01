@@ -18,10 +18,10 @@ const PERMANENT_ACCOUNTS = [
 export async function ensurePermanentAccounts() {
   const passwords = PERMANENT_ACCOUNTS.map(({ password }) => password);
   if (passwords.some((password) => typeof password !== 'string' || password.length < 12)) {
-    throw new Error('Set a password of at least 12 characters for each permanent staff account in backend/.env.');
+    throw new Error('Set a password of at least 12 characters for each permanent staff account in backend/.env or the deployment environment.');
   }
   if (new Set(passwords).size !== passwords.length) {
-    throw new Error('Use a different password for each permanent staff account in backend/.env.');
+    throw new Error('Use a different password for each permanent staff account in backend/.env or the deployment environment.');
   }
 
   console.log('[accounts] Checking permanent staff accounts...');

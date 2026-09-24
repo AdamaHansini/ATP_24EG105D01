@@ -1,12 +1,4 @@
-import { getAiClient } from './aiClient.js';
-
-function providerError(error) {
-  if (error.statusCode) return error;
-  const wrapped = new Error('AI generation is temporarily unavailable. Please try again.');
-  wrapped.statusCode = 502;
-  wrapped.errorCode = 'AI_PROVIDER_ERROR';
-  return wrapped;
-}
+import { getAiClient, toAiProviderError } from './aiClient.js';
 
 async function generateJson(prompt, temperature = 0.3) {
   try {
@@ -17,8 +9,7 @@ async function generateJson(prompt, temperature = 0.3) {
     });
     return JSON.parse(response.text.trim());
   } catch (error) {
-    console.error('[ai] Generation request failed:', error.name, error.statusCode || error.code);
-    throw providerError(error);
+    throw toAiProviderError(error, 'Product content generation');
   }
 }
 
