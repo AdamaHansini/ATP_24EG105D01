@@ -1,9 +1,16 @@
 import { Cart, Product, Inventory, Coupon } from '../models/index.js';
 import { toPlain } from '../utils/toPlain.js';
 
+function getCartOwner(req) {
+  if (req.user?._id) return String(req.user._id);
+  const guestId = String(req.headers['x-guest-id'] || '').trim();
+  return /^[a-zA-Z0-9_-]{16,128}$/.test(guestId) ? `guest:${guestId}` : null;
+}
+
 export async function getCart(req, res, next) {
   try {
-    const userId = req.user ? req.user._id : req.headers['x-guest-id'] || 'guest_user';
+    const userId = getCartOwner(req);
+    if (!userId) return res.status(400).json({ success: false, message: 'A guest cart session is required' });
     let cart = await Cart.findOne({ user: userId });
     if (!cart) {
       cart = await Cart.create({ user: userId, items: [] });
@@ -19,25 +26,101 @@ export async function getCart(req, res, next) {
   }
 }
 
+export async function mergeGuestCart(req, res, next) {
+  try {
+    if (!req.user?._id) return res.status(401).json({ success: false, message: 'Sign in to merge your cart' });
+    const guestOwner = getCartOwner({ headers: req.headers, user: null });
+    if (!guestOwner) return res.status(400).json({ success: false, message: 'A guest cart session is required' });
+
+    const guestCart = await Cart.findOne({ user: guestOwner });
+    if (!guestCart || guestCart.items.length === 0) {
+      return res.json({ success: true, message: 'No guest cart items to merge' });
+    }
+
+    const userId = String(req.user._id);
+    let userCart = await Cart.findOne({ user: userId });
+    if (!userCart) userCart = await Cart.create({ user: userId, items: [] });
+    const mergedItems = (userCart.items || []).map((item) => ({ ...toPlain(item) }));
+    const remainingGuestItems = [];
+    let skippedCount = 0;
+
+    for (const guestItem of guestCart.items) {
+      const productId = String(guestItem.productId || guestItem.product || '');
+      const product = await Product.findById(productId);
+      if (!product || product.status !== 'active') {
+        skippedCount += 1;
+        remainingGuestItems.push(toPlain(guestItem));
+        continue;
+      }
+      if (product.seller) {
+        const { Seller, Store } = await import('../models/index.js');
+        const seller = await Seller.findById(product.seller);
+        const store = product.store ? await Store.findById(product.store) : null;
+        if (!seller || seller.status !== 'approved' || !store || store.status !== 'active') {
+          skippedCount += 1;
+          remainingGuestItems.push(toPlain(guestItem));
+          continue;
+        }
+      }
+
+      const inventory = await Inventory.findOne({ product: productId });
+      const available = inventory ? inventory.availableStock : (product.inventory ?? 0);
+      const existing = mergedItems.find((item) => String(item.productId || item.product) === productId);
+      const desiredQuantity = Math.min(100, Number(guestItem.quantity || 1) + (existing ? Number(existing.quantity || 0) : 0));
+      if (desiredQuantity > available) {
+        skippedCount += 1;
+        remainingGuestItems.push(toPlain(guestItem));
+        continue;
+      }
+
+      if (existing) {
+        existing.quantity = desiredQuantity;
+        existing.price = product.price;
+      } else {
+        mergedItems.push({
+          product: product._id,
+          productId,
+          name: product.name,
+          price: product.price,
+          image: product.images?.[0] || '',
+          quantity: Math.min(100, Number(guestItem.quantity || 1)),
+          seller: product.seller ? String(product.seller) : '',
+          sellerName: product.storeName || 'Seller',
+          variant: guestItem.variant,
+        });
+      }
+    }
+
+    await Cart.findByIdAndUpdate(userCart._id, { $set: { items: mergedItems } });
+    await Cart.findByIdAndUpdate(guestCart._id, { $set: { items: remainingGuestItems } });
+    res.json({ success: true, data: { mergedCount: mergedItems.length, skippedCount, remainingCount: remainingGuestItems.length } });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function addItemToCart(req, res, next) {
   try {
-    const userId = req.user ? req.user._id : req.headers['x-guest-id'] || 'guest_user';
+    const userId = getCartOwner(req);
+    if (!userId) return res.status(400).json({ success: false, message: 'A guest cart session is required' });
     const { productId, quantity = 1, variant } = req.body;
+    const requestedQuantity = Number(quantity);
+    if (!Number.isInteger(requestedQuantity) || requestedQuantity < 1 || requestedQuantity > 100) {
+      return res.status(400).json({ success: false, message: 'Quantity must be a whole number between 1 and 100' });
+    }
 
     const product = await Product.findById(productId);
-    if (!product) {
+    if (!product || product.status !== 'active') {
       return res.status(404).json({ success: false, message: 'Product not found' });
     }
 
-    // Check available stock
-    const inv = await Inventory.findOne({ product: productId });
-    const available = inv ? inv.availableStock : (product.inventory || 20);
-    if (available < quantity) {
-      return res.status(400).json({
-        success: false,
-        message: `Only ${available} items available in stock`,
-        errorCode: 'INSUFFICIENT_STOCK',
-      });
+    if (product.seller) {
+      const { Seller, Store } = await import('../models/index.js');
+      const seller = await Seller.findById(product.seller);
+      const store = product.store ? await Store.findById(product.store) : null;
+      if (!seller || seller.status !== 'approved' || !store || store.status !== 'active') {
+        return res.status(404).json({ success: false, message: 'Product not found' });
+      }
     }
 
     let cart = await Cart.findOne({ user: userId });
@@ -47,9 +130,19 @@ export async function addItemToCart(req, res, next) {
 
     const items = cart.items || [];
     const existingIndex = items.findIndex(i => String(i.productId || i.product) === String(productId));
+    const inv = await Inventory.findOne({ product: productId });
+    const available = inv ? inv.availableStock : (product.inventory ?? 0);
+    const requestedTotal = requestedQuantity + (existingIndex > -1 ? Number(items[existingIndex].quantity) : 0);
+    if (requestedTotal > available || requestedTotal > 100) {
+      return res.status(400).json({
+        success: false,
+        message: `Only ${available} items are available in stock`,
+        errorCode: 'INSUFFICIENT_STOCK',
+      });
+    }
 
     if (existingIndex > -1) {
-      items[existingIndex].quantity += Number(quantity);
+      items[existingIndex].quantity = requestedTotal;
     } else {
       items.push({
         product: product._id,
@@ -57,9 +150,9 @@ export async function addItemToCart(req, res, next) {
         name: product.name,
         price: product.price,
         image: product.images?.[0] || '',
-        quantity: Number(quantity),
-        seller: String(product.seller || 'seller_1'),
-        sellerName: product.storeName || 'Verified Seller',
+        quantity: requestedQuantity,
+        seller: product.seller ? String(product.seller) : '',
+        sellerName: product.storeName || 'Seller',
         variant,
       });
     }
@@ -79,7 +172,8 @@ export async function addItemToCart(req, res, next) {
 
 export async function updateCartItem(req, res, next) {
   try {
-    const userId = req.user ? req.user._id : req.headers['x-guest-id'] || 'guest_user';
+    const userId = getCartOwner(req);
+    if (!userId) return res.status(400).json({ success: false, message: 'A guest cart session is required' });
     const itemId = req.params.id;
     const { quantity } = req.body;
 
@@ -92,7 +186,20 @@ export async function updateCartItem(req, res, next) {
       if (quantity <= 0) {
         cart.items = items.filter(i => String(i._id || i.productId) !== String(itemId));
       } else {
-        item.quantity = Number(quantity);
+        const nextQuantity = Number(quantity);
+        if (!Number.isInteger(nextQuantity) || nextQuantity > 100) {
+          return res.status(400).json({ success: false, message: 'Quantity must be a whole number of 100 or less' });
+        }
+        const product = await Product.findById(item.productId || item.product);
+        if (!product || product.status !== 'active') {
+          return res.status(404).json({ success: false, message: 'Product is no longer available' });
+        }
+        const inventory = await Inventory.findOne({ product: item.productId || item.product });
+        const available = inventory ? inventory.availableStock : (product?.inventory ?? 0);
+        if (nextQuantity > available) {
+          return res.status(400).json({ success: false, message: `Only ${available} items are available in stock` });
+        }
+        item.quantity = nextQuantity;
       }
       await Cart.findByIdAndUpdate(cart._id, { $set: { items: cart.items } });
     }
@@ -105,7 +212,8 @@ export async function updateCartItem(req, res, next) {
 
 export async function removeCartItem(req, res, next) {
   try {
-    const userId = req.user ? req.user._id : req.headers['x-guest-id'] || 'guest_user';
+    const userId = getCartOwner(req);
+    if (!userId) return res.status(400).json({ success: false, message: 'A guest cart session is required' });
     const itemId = req.params.id;
 
     const cart = await Cart.findOne({ user: userId });
@@ -116,15 +224,6 @@ export async function removeCartItem(req, res, next) {
 
     const plainCart = toPlain(cart);
     res.json({ success: true, message: 'Item removed from cart', data: { cart: { ...plainCart, items } } });
-  } catch (err) {
-    next(err);
-  }
-}
-
-export async function reserveCart(req, res, next) {
-  try {
-    // Reserves inventory atomically for cart items
-    res.json({ success: true, message: 'Cart inventory successfully reserved' });
   } catch (err) {
     next(err);
   }
@@ -142,7 +241,15 @@ export async function validateCoupon(req, res, next) {
       return res.status(404).json({ success: false, message: 'Invalid or expired coupon code' });
     }
 
-    const currentSubtotal = Number(subtotal) || 0;
+    const now = new Date();
+    if ((coupon.startDate && coupon.startDate > now) || (coupon.expiryDate && coupon.expiryDate < now) || (coupon.usageLimit && coupon.usedCount >= coupon.usageLimit)) {
+      return res.status(404).json({ success: false, message: 'Invalid or expired coupon code' });
+    }
+
+    const currentSubtotal = Number(subtotal);
+    if (!Number.isFinite(currentSubtotal) || currentSubtotal < 0) {
+      return res.status(400).json({ success: false, message: 'A valid subtotal is required' });
+    }
     if (coupon.minOrder && currentSubtotal < coupon.minOrder) {
       return res.status(400).json({
         success: false,

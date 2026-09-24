@@ -28,7 +28,7 @@ export function NotificationProvider({ children }) {
         }
       }
     } catch (e) {
-      // Do not spam the console — silently skip failed notification fetches
+      console.error('Notification load failed:', e);
     }
   }, [user]);
 

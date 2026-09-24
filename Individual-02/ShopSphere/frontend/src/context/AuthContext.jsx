@@ -10,40 +10,57 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let active = true;
     async function loadUser() {
       const token = localStorage.getItem('shopsphere_token');
       if (token) {
         try {
           const profile = await authService.getMe();
-          setUser(profile || null);
+          if (active) {
+            setUser(profile || null);
+            setLoading(false);
+          }
         } catch (e) {
-          // Token is invalid or expired — clear it
-          localStorage.removeItem('shopsphere_token');
-          setUser(null);
+          if (e.statusCode !== 401 && e.statusCode !== 403) console.warn('Could not restore the signed-in session:', e.message);
+          if (active) setUser(null);
+          if (active) setLoading(false);
         }
       } else {
-        setUser(null);
+        if (active) setUser(null);
       }
-      setLoading(false);
+      if (active) setLoading(false);
     }
     loadUser();
+    const handleUnauthorized = () => setUser(null);
+    window.addEventListener('shopsphere:unauthorized', handleUnauthorized);
+    return () => {
+      active = false;
+      window.removeEventListener('shopsphere:unauthorized', handleUnauthorized);
+    };
   }, []);
 
   const login = async (email, password, role) => {
     const res = await authService.login(email, password, role);
     setUser(res.user);
+    setLoading(false);
     return res;
   };
 
   const register = async (userData) => {
     const res = await authService.register(userData);
     setUser(res.user);
+    setLoading(false);
     return res;
   };
 
   const logout = async () => {
-    await authService.logout();
+    localStorage.removeItem('shopsphere_token');
     setUser(null);
+    try {
+      await authService.logout();
+    } catch (error) {
+      console.warn('Could not confirm logout with the backend:', error.message);
+    }
   };
 
   return (

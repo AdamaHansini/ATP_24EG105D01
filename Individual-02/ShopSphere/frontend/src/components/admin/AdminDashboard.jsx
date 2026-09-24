@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import ConfirmDialog from '../ui/ConfirmDialog.jsx';
 
-export default function AdminDashboard({ onOpenRollbackLab }) {
+export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('overview');
   const [dashboardData, setDashboardData] = useState(null);
   const [users, setUsers] = useState([]);
@@ -28,6 +28,7 @@ export default function AdminDashboard({ onOpenRollbackLab }) {
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
+  const [disputes, setDisputes] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Search queries for tables
@@ -47,13 +48,14 @@ export default function AdminDashboard({ onOpenRollbackLab }) {
   const fetchAdminData = async () => {
     setLoading(true);
     try {
-      const [dashRes, userRes, sellRes, prodRes, ordRes, logRes] = await Promise.all([
+      const [dashRes, userRes, sellRes, prodRes, ordRes, logRes, disputeRes] = await Promise.all([
         api.get('/admin/dashboard'),
         api.get('/admin/users'),
         api.get('/admin/sellers'),
         api.get('/products'),
         api.get('/orders'),
         api.get('/admin/audit-logs'),
+        api.get('/admin/disputes'),
       ]);
       setDashboardData(dashRes.data);
       setUsers(userRes.data?.users || []);
@@ -61,10 +63,20 @@ export default function AdminDashboard({ onOpenRollbackLab }) {
       setProducts(prodRes.data?.products || []);
       setOrders(ordRes.data?.orders || []);
       setAuditLogs(logRes.data?.logs || []);
+      setDisputes(disputeRes.data?.disputes || []);
     } catch (e) {
       console.warn('Admin load error:', e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResolveDispute = async (dispute, resolution) => {
+    try {
+      await api.patch(`/admin/disputes/${dispute._id}/resolve`, { resolution });
+      await fetchAdminData();
+    } catch (error) {
+      alert('Dispute update failed: ' + error.message);
     }
   };
 
@@ -163,13 +175,6 @@ export default function AdminDashboard({ onOpenRollbackLab }) {
           </div>
         </div>
 
-        <button
-          onClick={onOpenRollbackLab}
-          className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors"
-        >
-          <AlertTriangle className="w-4 h-4" />
-          <span>Rollback Verification Lab</span>
-        </button>
       </div>
 
       {/* Metrics Row */}
@@ -213,6 +218,7 @@ export default function AdminDashboard({ onOpenRollbackLab }) {
           { id: 'sellers', label: `Sellers (${sellers.length})` },
           { id: 'orders', label: `Orders (${orders.length})` },
           { id: 'products', label: `Catalog (${products.length})` },
+          { id: 'disputes', label: `Disputes (${disputes.filter((dispute) => dispute.status === 'OPEN').length})` },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -429,7 +435,8 @@ export default function AdminDashboard({ onOpenRollbackLab }) {
                   <span className="font-bold text-slate-900">Order #{o.orderNumber || o._id}</span>
                   <div className="text-slate-500 mt-0.5">
                     Total: ₹{Number(o.totalAmount).toLocaleString()} &bull; Payment:{' '}
-                    {o.paymentStatus || 'paid'}
+                    {String(o.paymentStatus || 'PENDING').toUpperCase()}
+                    <br />{o.paymentMethod || 'UNSPECIFIED'} | Placed {new Date(o.createdAt).toLocaleDateString()} | Paid {o.paidAt ? new Date(o.paidAt).toLocaleDateString() : 'N/A'}
                   </div>
                 </div>
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-slate-200 text-slate-800">
@@ -450,11 +457,9 @@ export default function AdminDashboard({ onOpenRollbackLab }) {
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
             {products.map((p) => (
               <div key={p._id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex gap-3">
-                <img
-                  src={p.images?.[0] || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&q=80'}
-                  alt=""
-                  className="w-12 h-12 object-cover rounded"
-                />
+                {p.images?.[0] ? (
+                  <img src={p.images[0]} alt={p.name} className="w-12 h-12 object-cover rounded" />
+                ) : <Package className="w-12 h-12 p-3 text-slate-400 bg-slate-100 rounded" />}
                 <div className="min-w-0">
                   <p className="font-semibold text-slate-800 truncate">{p.name}</p>
                   <p className="text-slate-500">₹{Number(p.price).toLocaleString()}</p>
@@ -463,6 +468,24 @@ export default function AdminDashboard({ onOpenRollbackLab }) {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {activeTab === 'disputes' && (
+        <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs space-y-4 text-xs">
+          <h3 className="font-bold text-slate-900 text-sm">Customer disputes and return requests</h3>
+          {disputes.length === 0 ? <p className="text-slate-500">No disputes are currently recorded.</p> : disputes.map((dispute) => (
+            <div key={dispute._id} className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-2">
+              <div className="flex justify-between gap-3"><strong>{dispute.reason}</strong><span className="uppercase">{dispute.status}</span></div>
+              {dispute.order && <p className="text-slate-500">Order {dispute.order}</p>}
+              {dispute.status === 'OPEN' && dispute.returnRequest && (
+                <div className="flex gap-2">
+                  <button onClick={() => handleResolveDispute(dispute, 'RESOLVED')} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg">Approve return</button>
+                  <button onClick={() => handleResolveDispute(dispute, 'REJECTED')} className="px-3 py-1.5 bg-rose-600 text-white rounded-lg">Decline return</button>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
 

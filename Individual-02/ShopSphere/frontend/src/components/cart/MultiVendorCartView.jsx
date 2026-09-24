@@ -13,6 +13,7 @@ import {
   AlertCircle,
   Truck,
   RotateCcw,
+  Package,
 } from 'lucide-react';
 import Badge from '../ui/Badge.jsx';
 import Button from '../ui/Button.jsx';
@@ -34,7 +35,7 @@ export default function MultiVendorCartView({ onProceedToCheckout, onContinueSho
         </div>
         <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900">Your cart is empty</h2>
         <p className="text-slate-500 text-xs sm:text-sm mt-1.5 max-w-sm mx-auto leading-relaxed">
-          Discover products from verified independent sellers and add them to your cart.
+          Discover products from independent sellers and add them to your cart.
         </p>
         <button
           onClick={onContinueShopping}
@@ -118,7 +119,7 @@ export default function MultiVendorCartView({ onProceedToCheckout, onContinueSho
                           Seller
                         </span>
                         <Badge variant="purple" size="sm">
-                          Verified Partner
+                          Seller
                         </Badge>
                       </div>
                       <h3 className="text-sm font-bold text-slate-900 leading-tight">
@@ -145,11 +146,9 @@ export default function MultiVendorCartView({ onProceedToCheckout, onContinueSho
                       >
                         <div className="flex items-center gap-3.5 flex-1 min-w-0">
                           <div className="w-16 h-16 rounded-xl bg-slate-50 border border-slate-100 overflow-hidden flex-shrink-0">
-                            <img
-                              src={item.image || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=200&q=80'}
-                              alt={item.name}
-                              className="w-full h-full object-cover"
-                            />
+                            {item.image ? (
+                              <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                            ) : <Package className="w-7 h-7 text-slate-300 m-auto mt-4" />}
                           </div>
                           <div className="min-w-0 flex-1">
                             <h4 className="text-xs sm:text-sm font-bold text-slate-900 truncate">
@@ -315,7 +314,7 @@ export default function MultiVendorCartView({ onProceedToCheckout, onContinueSho
             <div className="pt-3 text-[11px] text-slate-400 space-y-1 text-center">
               <p className="flex items-center justify-center gap-1">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-                <span>Protected by Atomic Multi-Vendor Rollback Guarantee</span>
+                <span>Inventory is checked again when you place your order.</span>
               </p>
               <p>Items will be partitioned into respective seller fulfillment orders.</p>
             </div>

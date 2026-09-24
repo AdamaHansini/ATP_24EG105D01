@@ -10,7 +10,7 @@ export async function getTickets(req, res, next) {
     if (category) filter.category = category;
 
     // Customer can only view their own tickets
-    if (req.user && req.user.role === 'customer') {
+    if (!['support', 'admin'].includes(req.user.role)) {
       filter.user = req.user._id;
     }
 
@@ -33,7 +33,7 @@ export async function getTicketById(req, res, next) {
       return res.status(404).json({ success: false, message: 'Ticket not found' });
     }
 
-    if (req.user && req.user.role === 'customer' && String(ticket.user) !== String(req.user._id)) {
+    if (!['support', 'admin'].includes(req.user.role) && String(ticket.user) !== String(req.user._id)) {
       return res.status(403).json({ success: false, message: 'Access denied to this ticket' });
     }
 
@@ -54,6 +54,11 @@ export async function createTicket(req, res, next) {
 
     if (!subject || !message) {
       return res.status(400).json({ success: false, message: 'Subject and initial message are required' });
+    }
+    const validCategories = ['Order Issue', 'Payment Issue', 'Delivery Issue', 'Return Issue', 'Product Issue', 'Other'];
+    const validPriorities = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'];
+    if (!validCategories.includes(category || 'Order Issue') || !validPriorities.includes(priority || 'MEDIUM')) {
+      return res.status(400).json({ success: false, message: 'Select a valid ticket category and priority' });
     }
 
     const ticketNumber = `TCK-${Date.now().toString().slice(-6)}`;
@@ -100,8 +105,15 @@ export async function addMessage(req, res, next) {
       return res.status(404).json({ success: false, message: 'Ticket not found' });
     }
 
-    const senderName = req.user ? req.user.name : 'Support Agent';
-    const senderRole = req.user ? req.user.role : 'support';
+    if (!['support', 'admin'].includes(req.user.role) && String(ticket.user) !== String(req.user._id)) {
+      return res.status(403).json({ success: false, message: 'Access denied to this ticket' });
+    }
+    if (['support', 'admin'].includes(req.user.role) && ['RESOLVED', 'CLOSED'].includes(ticket.status)) {
+      return res.status(409).json({ success: false, message: 'This ticket is closed. Reopen it before replying.' });
+    }
+
+    const senderName = req.user.name;
+    const senderRole = req.user.role;
 
     const newMessage = {
       sender: senderName,
@@ -170,11 +182,24 @@ export async function updateTicket(req, res, next) {
   try {
     const { status, priority, assignedTo } = req.body;
     const update = {};
+    const validStatuses = ['OPEN', 'IN_PROGRESS', 'WAITING_FOR_CUSTOMER', 'RESOLVED', 'CLOSED'];
+    const validPriorities = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'];
+    if (status && !validStatuses.includes(status)) {
+      return res.status(400).json({ success: false, message: 'Invalid ticket status' });
+    }
+    if (priority && !validPriorities.includes(priority)) {
+      return res.status(400).json({ success: false, message: 'Invalid ticket priority' });
+    }
+    if (assignedTo !== undefined && typeof assignedTo !== 'string') {
+      return res.status(400).json({ success: false, message: 'Assigned agent must be a string' });
+    }
     if (status) update.status = status;
     if (priority) update.priority = priority;
-    if (assignedTo) update.assignedTo = assignedTo;
+    if (assignedTo !== undefined) update.assignedTo = assignedTo.trim();
+    if (!Object.keys(update).length) return res.status(400).json({ success: false, message: 'No ticket changes were provided' });
 
-    const updated = await SupportTicket.findByIdAndUpdate(req.params.id, { $set: update });
+    const updated = await SupportTicket.findByIdAndUpdate(req.params.id, { $set: update }, { new: true });
+    if (!updated) return res.status(404).json({ success: false, message: 'Ticket not found' });
     res.json({
       success: true,
       message: 'Ticket updated successfully',

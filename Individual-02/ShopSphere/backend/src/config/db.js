@@ -1,9 +1,5 @@
 // backend/src/config/db.js
 import mongoose from 'mongoose';
-import dns from 'dns';
-
-// Force reliable DNS for MongoDB Atlas SRV records
-try { dns.setServers(['8.8.8.8', '1.1.1.1']); } catch (_) {}
 
 const CONNECT_OPTIONS = {
   serverSelectionTimeoutMS: 30000,
@@ -16,9 +12,8 @@ const CONNECT_OPTIONS = {
 
 export async function connectDB(retries = 5, delayMs = 3000) {
   const uri = process.env.MONGODB_URI;
-  if (!uri || !uri.startsWith('mongodb')) {
-    console.error('[db] MONGODB_URI is not set or invalid. Set it in backend/.env');
-    process.exit(1);
+  if (!uri || !/^mongodb(?:\+srv)?:\/\//.test(uri)) {
+    throw new Error('[db] MONGODB_URI is not set or invalid. Set it in backend/.env');
   }
 
   for (let attempt = 1; attempt <= retries; attempt++) {
@@ -28,7 +23,7 @@ export async function connectDB(retries = 5, delayMs = 3000) {
       console.log('[db] MongoDB connected successfully.');
       return;
     } catch (err) {
-      console.error(`[db] Attempt ${attempt} failed: ${err.message}`);
+      console.error(`[db] Attempt ${attempt} failed: ${err.name}: ${err.message}`);
       if (attempt < retries) {
         await new Promise((r) => setTimeout(r, delayMs));
       } else {

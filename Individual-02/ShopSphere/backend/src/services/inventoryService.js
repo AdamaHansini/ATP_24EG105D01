@@ -4,7 +4,13 @@ export async function getInventoryByProduct(productId) {
   let inventory = await Inventory.findOne({ product: productId });
   if (!inventory) {
     const product = await Product.findById(productId);
-    const initialStock = product?.inventory !== undefined ? product.inventory : 50;
+    if (!product) {
+      const error = new Error('Product not found while preparing inventory.');
+      error.statusCode = 404;
+      error.errorCode = 'PRODUCT_NOT_FOUND';
+      throw error;
+    }
+    const initialStock = product.inventory ?? 0;
     inventory = await Inventory.create({
       product: productId,
       totalStock: initialStock,
@@ -31,15 +37,11 @@ export async function validateStock(productId, quantity = 1) {
 // Atomically reserves inventory during checkout
 export async function reserveInventory(productId, quantity, session = null) {
   const qty = Number(quantity) || 1;
-  const inventory = await getInventoryByProduct(productId);
-
-  if (inventory.availableStock < qty) {
-    throw new Error(`Insufficient stock for product. Available: ${inventory.availableStock}, Requested: ${qty}`);
-  }
+  await getInventoryByProduct(productId);
 
   const options = session ? { session } : {};
-  await Inventory.updateOne(
-    { product: productId },
+  const result = await Inventory.updateOne(
+    { product: productId, availableStock: { $gte: qty } },
     {
       $inc: {
         reservedStock: qty,
@@ -48,6 +50,13 @@ export async function reserveInventory(productId, quantity, session = null) {
     },
     options
   );
+
+  if (result.modifiedCount !== 1) {
+    const error = new Error('The requested quantity is no longer available. Refresh your cart and try again.');
+    error.statusCode = 409;
+    error.errorCode = 'INSUFFICIENT_STOCK';
+    throw error;
+  }
 
   return { success: true, productId, reservedQuantity: qty };
 }

@@ -1,82 +1,70 @@
-// backend/src/ai/productDescriptionGenerator.js
 import { getAiClient } from './aiClient.js';
 
+function providerError(error) {
+  if (error.statusCode) return error;
+  const wrapped = new Error('AI generation is temporarily unavailable. Please try again.');
+  wrapped.statusCode = 502;
+  wrapped.errorCode = 'AI_PROVIDER_ERROR';
+  return wrapped;
+}
+
+async function generateJson(prompt, temperature = 0.3) {
+  try {
+    const response = await getAiClient().models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents: prompt,
+      config: { responseMimeType: 'application/json', temperature },
+    });
+    return JSON.parse(response.text.trim());
+  } catch (error) {
+    console.error('[ai] Generation request failed:', error.name, error.statusCode || error.code);
+    throw providerError(error);
+  }
+}
+
 export async function generateProductDescription({ name, brand = '', category = '', features = '', keywords = [] }) {
-  const prompt = `You are a professional e-commerce copywriter for ShopSphere marketplace.
-Generate a compelling, conversion-focused product description package for:
+  const prompt = `You are an e-commerce copywriter for ShopSphere. Use only the supplied product details. Do not claim certifications, warranty, or performance that are not present in those details.
 Product: ${name}
 Brand: ${brand}
 Category: ${category}
 Key Features: ${features}
 Keywords: ${keywords.join(', ')}
 
-Return ONLY valid JSON with this structure:
+Return only valid JSON with this structure:
 {
-  "productDescription": "Rich, multi-paragraph markdown or HTML styled description highlighting build quality, ergonomics, and real-world advantages.",
-  "shortDescription": "1-2 punchy sentences summarizing the core value proposition.",
-  "keySellingPoints": [
-    "Feature point 1 with benefit",
-    "Feature point 2 with benefit",
-    "Feature point 3 with benefit",
-    "Feature point 4 with benefit"
-  ],
-  "searchKeywords": ["keyword1", "keyword2", "keyword3", "keyword4"]
+  "productDescription": "Description grounded in the supplied product details",
+  "shortDescription": "One or two concise sentences",
+  "keySellingPoints": ["Supported feature and benefit"],
+  "searchKeywords": ["relevant keyword"]
 }`;
 
-  const ai = getAiClient();
-  if (ai) {
-    try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: prompt,
-        config: {
-          responseMimeType: 'application/json',
-          temperature: 0.3,
-        },
-      });
-      return JSON.parse(response.text.trim());
-    } catch (err) {
-      console.warn('Gemini description generator failed, fallback:', err.message);
-    }
+  const result = await generateJson(prompt);
+  if (
+    typeof result.productDescription !== 'string' ||
+    typeof result.shortDescription !== 'string' ||
+    !Array.isArray(result.keySellingPoints) ||
+    !Array.isArray(result.searchKeywords)
+  ) {
+    const error = new Error('AI returned an incomplete product description. Please try again.');
+    error.statusCode = 502;
+    error.errorCode = 'AI_INVALID_RESPONSE';
+    throw error;
   }
-
-  // Fallback
-  return {
-    productDescription: `Experience uncompromising craftsmanship with the ${name} by ${brand || 'ShopSphere Essentials'}. Engineered for demanding everyday use, it balances premium materials with intuitive functionality, making it an essential addition to your daily routine.`,
-    shortDescription: `Top-tier ${category || 'product'} from ${brand || 'ShopSphere'} built for performance and durability.`,
-    keySellingPoints: [
-      `Precision engineered by ${brand || 'top manufacturers'}`,
-      'Designed for long-lasting durability and peak efficiency',
-      'Ergonomic, modern aesthetic suited for any environment',
-      'Includes complete warranty and dedicated customer support',
-    ],
-    searchKeywords: [name.toLowerCase(), (brand + ' ' + category).toLowerCase(), 'best ' + category.toLowerCase(), 'buy online'],
-  };
+  return result;
 }
 
 export async function generateProductTags({ name, category = '', description = '' }) {
-  const prompt = `Generate 6-10 e-commerce search tags for the product: "${name}", category: "${category}".
-Return ONLY a JSON array of string tags: ["tag1", "tag2", ...]`;
-
-  const ai = getAiClient();
-  if (ai) {
-    try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: prompt,
-        config: { responseMimeType: 'application/json' },
-      });
-      return JSON.parse(response.text.trim());
-    } catch (e) {
-      // Fallback
-    }
+  const prompt = `Generate relevant product search tags using only these details.
+Product: ${name}
+Category: ${category}
+Description: ${description}
+Return only a JSON array of strings.`;
+  const result = await generateJson(prompt);
+  if (!Array.isArray(result) || result.some((tag) => typeof tag !== 'string')) {
+    const error = new Error('AI returned invalid product tags. Please try again.');
+    error.statusCode = 502;
+    error.errorCode = 'AI_INVALID_RESPONSE';
+    throw error;
   }
-  return [
-    category.toLowerCase() || 'lifestyle',
-    'trending',
-    'quality',
-    'best-value',
-    'authentic',
-    name.split(' ')[0].toLowerCase(),
-  ];
+  return [...new Set(result.map((tag) => tag.trim()).filter(Boolean))].slice(0, 10);
 }

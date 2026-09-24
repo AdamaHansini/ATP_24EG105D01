@@ -18,6 +18,7 @@ import {
   Truck,
   RotateCcw,
   Zap,
+  Package,
 } from 'lucide-react';
 import { productService } from '../../services/productService.js';
 import Badge from '../ui/Badge.jsx';
@@ -60,7 +61,7 @@ export default function ProductCatalogView({
     productService
       .getRecentlyViewed()
       .then((res) => setRecentlyViewed(res || []))
-      .catch(() => {});
+      .catch((error) => console.warn('Could not load recently viewed products:', error));
   }, [selectedProduct]);
 
   // Extract unique brands, stores, and subcategories
@@ -198,10 +199,10 @@ export default function ProductCatalogView({
               <span>Next-Gen Multi-Vendor Marketplace</span>
             </div>
             <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight leading-tight">
-              Curated Electronics & Lifestyle, Direct from Verified Merchants
+              Discover products from ShopSphere sellers
             </h1>
             <p className="text-xs sm:text-sm text-indigo-100 leading-relaxed max-w-xl">
-              Enjoy automated transaction-safe checkout across multiple vendors, instant wishlist price-drop notifications, and AI-optimized catalog exploration.
+              Browse the catalog, save items to your wishlist, and shop across multiple sellers.
             </p>
             <div className="flex flex-wrap items-center gap-3 pt-2">
               <button
@@ -273,11 +274,9 @@ export default function ProductCatalogView({
                 }`}
               >
                 <div className="w-12 h-12 rounded-xl overflow-hidden bg-slate-100 flex-shrink-0">
-                  <img
-                    src={cat.image || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=100&q=80'}
-                    alt={cat.name}
-                    className="w-full h-full object-cover"
-                  />
+                  {cat.image ? (
+                    <img src={cat.image} alt={cat.name} className="w-full h-full object-cover" />
+                  ) : <Package className="w-5 h-5 text-slate-400 m-auto mt-3.5" />}
                 </div>
                 <div className="truncate">
                   <h3 className={`text-xs sm:text-sm font-bold truncate ${

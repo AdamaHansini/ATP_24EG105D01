@@ -10,6 +10,7 @@ import {
   TrendingDown,
   Store,
   Check,
+  Package,
 } from 'lucide-react';
 import ProductDetailModal from '../product/ProductDetailModal.jsx';
 
@@ -60,7 +61,7 @@ export default function WishlistView({ onBrowseProducts, onProceedToCheckout }) 
           </div>
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Your Wishlist</h1>
           <p className="text-slate-600 text-xs sm:text-sm mt-1 max-w-xl">
-            Track price drops across verified sellers. Whenever a seller lowers a price, you will receive an instantaneous alert.
+            Track price changes for saved products and receive an alert when a seller lowers the price.
           </p>
         </div>
         <button
@@ -80,7 +81,7 @@ export default function WishlistView({ onBrowseProducts, onProceedToCheckout }) 
           const hasPriceDropped = currentPrice < savedPrice;
           const dropAmount = savedPrice - currentPrice;
           const prodId = item.productId || product._id;
-          const stock = product.availableStock !== undefined ? product.availableStock : (product.inventory || 20);
+          const stock = product.availableStock !== undefined ? product.availableStock : (product.inventory ?? 0);
 
           const discountPercent =
             product.discountPrice && product.discountPrice > currentPrice
@@ -98,11 +99,9 @@ export default function WishlistView({ onBrowseProducts, onProceedToCheckout }) 
                   onClick={() => setSelectedProduct(product)}
                   className="relative aspect-square bg-slate-50 overflow-hidden cursor-pointer group"
                 >
-                  <img
-                    src={product.images?.[0] || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&q=80'}
-                    alt={product.name}
-                    className="w-full h-full object-cover group-hover:scale-103 transition-transform"
-                  />
+                  {product.images?.[0] ? (
+                    <img src={product.images[0]} alt={product.name} className="w-full h-full object-cover group-hover:scale-103 transition-transform" />
+                  ) : <Package className="w-12 h-12 text-slate-300 absolute inset-0 m-auto" />}
 
                   {/* Price Dropped Banner */}
                   {hasPriceDropped && (
@@ -134,7 +133,7 @@ export default function WishlistView({ onBrowseProducts, onProceedToCheckout }) 
                 <div className="p-4 space-y-2">
                   <div className="flex items-center gap-1 text-[11px] text-slate-500">
                     <Store className="w-3 h-3 text-slate-400" />
-                    <span className="truncate">{product.storeName || 'Verified Seller'}</span>
+                    <span className="truncate">{product.storeName || 'Seller'}</span>
                   </div>
 
                   <h3

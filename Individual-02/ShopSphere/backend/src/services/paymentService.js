@@ -1,106 +1,77 @@
-// backend/src/services/paymentService.js
-import { Payment, Order } from '../models/index.js';
+import mongoose from 'mongoose';
+import { Delivery, Order, Payment, Refund } from '../models/index.js';
 
-/**
- * Payment Service Abstraction Layer
- * Designed to support pluggable payment providers.
- * Currently uses DevelopmentPaymentProvider ("Test / Pay Later" / Sandbox).
- * Future providers (e.g. RazorpayPaymentProvider) can be plugged in
- * without touching Orders, Seller Orders, Checkout, or Notifications.
- */
+function httpError(statusCode, errorCode, message) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  error.errorCode = errorCode;
+  return error;
+}
 
-class DevelopmentPaymentProvider {
-  constructor() {
-    this.name = 'DevelopmentPaymentProvider';
-  }
+export function createCODPayment({ order, userId, session }) {
+  return Payment.create([{
+    order: order._id,
+    user: userId,
+    amount: Number(order.totalAmount),
+    paymentMethod: 'COD',
+    paymentStatus: 'PENDING',
+    transactionReference: null,
+  }], { session }).then(([payment]) => payment);
+}
 
-  async initiate({ amount, currency = 'INR', receipt, userId }) {
-    const transactionId = `DEV-PAY-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
-    return {
-      provider: 'DEVELOPMENT',
-      transactionId,
-      amount,
-      currency,
-      receipt: receipt || `rcpt_${Date.now()}`,
-      status: 'pending',
-      method: 'Test / Pay Later',
-      instructions: 'Development sandbox mode active. No live credit card charge was made.',
-    };
-  }
+export async function markPaymentAsPaid({ orderId, assignedTo, transactionReference = null }) {
+  const session = await mongoose.startSession();
+  try {
+    let payment;
+    await session.withTransaction(async () => {
+      const order = await Order.findById(orderId).session(session);
+      if (!order) throw httpError(404, 'ORDER_NOT_FOUND', 'Order not found.');
+      if (order.paymentMethod !== 'COD') throw httpError(409, 'PAYMENT_METHOD_INVALID', 'Only COD orders can be collected.');
+      if (order.paymentStatus === 'PAID') {
+        payment = await Payment.findOne({ order: orderId }).session(session);
+        return;
+      }
+      if (order.paymentStatus !== 'PENDING') throw httpError(409, 'PAYMENT_NOT_COLLECTIBLE', 'This order payment cannot be collected.');
 
-  async verifyAndRecord({
-    orderId,
-    userId,
-    amount,
-    transactionId,
-    simulateSuccess = true,
-  }) {
-    if (!simulateSuccess) {
-      throw new Error('Payment processing was declined in development sandbox.');
-    }
-
-    const paymentRecord = await Payment.create({
-      order: orderId,
-      user: userId,
-      amount,
-      currency: 'INR',
-      status: 'captured',
-      method: 'Test / Pay Later',
-      razorpayOrderId: transactionId || `dev_${Date.now()}`,
-      razorpayPaymentId: `dev_captured_${Date.now()}`,
-      verifiedAt: new Date().toISOString(),
-    });
-
-    if (orderId) {
-      await Order.findByIdAndUpdate(orderId, {
-        $set: { paymentStatus: 'paid' },
+      const assignedDelivery = await Delivery.exists({
+        parentOrder: orderId,
+        assignedTo,
+        status: 'Out for Delivery',
       });
-    }
+      if (!assignedDelivery) throw httpError(403, 'DELIVERY_NOT_ASSIGNED', 'Only the assigned delivery partner may collect this COD payment while out for delivery.');
 
-    return paymentRecord;
+      const paidAt = new Date();
+      const updatedOrder = await Order.findOneAndUpdate(
+        { _id: orderId, paymentStatus: 'PENDING', paymentMethod: 'COD' },
+        { $set: { paymentStatus: 'PAID', paidAt, transactionReference: transactionReference || null, 'paymentDetails.status': 'PAID' } },
+        { new: true, session }
+      );
+      if (!updatedOrder) throw httpError(409, 'PAYMENT_ALREADY_PROCESSED', 'This payment was already collected.');
+
+      payment = await Payment.findOneAndUpdate(
+        { order: orderId, paymentStatus: 'PENDING' },
+        { $set: { paymentStatus: 'PAID', paidAt, transactionReference: transactionReference || null } },
+        { new: true, session }
+      );
+      if (!payment) throw httpError(409, 'PAYMENT_RECORD_NOT_FOUND', 'The COD payment record could not be found.');
+    });
+    return payment;
+  } finally {
+    await session.endSession();
   }
 }
 
-/**
- * Razorpay Payment Provider Placeholder (Ready for future activation)
- * When RAZORPAY_KEY_ID & RAZORPAY_KEY_SECRET are configured in the future,
- * this provider can be selected without modifying marketplace architecture.
- */
-class RazorpayPaymentProvider {
-  constructor() {
-    this.name = 'RazorpayPaymentProvider';
+export async function processCODCollection({ delivery, userId, transactionReference = null }) {
+  if (String(delivery.assignedTo) !== String(userId)) {
+    throw httpError(403, 'DELIVERY_NOT_ASSIGNED', 'This delivery is not assigned to you.');
   }
-
-  async initiate() {
-    throw new Error('Razorpay is not enabled in this release. Please use the development payment flow.');
+  if (delivery.status !== 'Out for Delivery') {
+    throw httpError(409, 'DELIVERY_NOT_READY', 'COD can be collected only when the order is out for delivery.');
   }
-
-  async verifyAndRecord() {
-    throw new Error('Razorpay is not enabled in this release. Please use the development payment flow.');
-  }
+  return markPaymentAsPaid({ orderId: delivery.parentOrder, assignedTo: userId, transactionReference });
 }
 
-// Active provider instance
-const activeProvider = new DevelopmentPaymentProvider();
-
-export async function initiatePayment({ amount, currency = 'INR', receipt, userId }) {
-  return activeProvider.initiate({ amount, currency, receipt, userId });
+export async function createRefundRecord({ order, amount = order.totalAmount }) {
+  if (String(order.paymentStatus).toUpperCase() !== 'PAID') return null;
+  return Refund.create({ order: order._id, user: order.customer, amount: Number(amount), status: 'Refund Processing' });
 }
-
-export async function verifyAndRecordPayment({
-  orderId,
-  userId,
-  amount,
-  transactionId,
-  simulateSuccess = true,
-}) {
-  return activeProvider.verifyAndRecord({
-    orderId,
-    userId,
-    amount,
-    transactionId,
-    simulateSuccess,
-  });
-}
-
-export { DevelopmentPaymentProvider, RazorpayPaymentProvider };

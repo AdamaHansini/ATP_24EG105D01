@@ -1,19 +1,28 @@
 // backend/src/services/checkoutService.js
 import mongoose from 'mongoose';
-import { Order, SellerOrder, Cart, Product, Coupon } from '../models/index.js';
-import { reserveInventory, releaseInventory, validateStock } from './inventoryService.js';
+import { Order, SellerOrder, Cart, Product, Seller, Store, Coupon, Notification } from '../models/index.js';
+import { createCODPayment } from './paymentService.js';
+import { reserveInventory, validateStock } from './inventoryService.js';
 
 export async function processMultiVendorCheckout({
   customerId,
-  cartItems = [],
   shippingAddress,
-  paymentDetails,
   couponCode,
-  simulateSellerFailure = false,
+  paymentMethod,
 }) {
+  const cart = await Cart.findOne({ user: customerId });
+  const cartItems = cart?.items || [];
   if (!cartItems || cartItems.length === 0) {
     const err = new Error('Your cart is empty. Add items to cart before proceeding to checkout.');
     err.errorCode = 'EMPTY_CART';
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const requiredAddressFields = ['fullName', 'phone', 'street', 'city', 'state', 'postalCode', 'country'];
+  if (!shippingAddress || requiredAddressFields.some((field) => !String(shippingAddress[field] || '').trim())) {
+    const err = new Error('Complete all shipping address fields before placing your order.');
+    err.errorCode = 'INVALID_SHIPPING_ADDRESS';
     err.statusCode = 400;
     throw err;
   }
@@ -22,12 +31,32 @@ export async function processMultiVendorCheckout({
   const validatedItems = [];
   for (const item of cartItems) {
     const productId = String(item.productId || item._id || item.product);
-    const quantity = Math.max(1, Number(item.quantity) || 1);
+    const quantity = Number(item.quantity);
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
+      const err = new Error('Each cart quantity must be a whole number between 1 and 100.');
+      err.errorCode = 'INVALID_QUANTITY';
+      err.statusCode = 400;
+      throw err;
+    }
 
     const product = await Product.findById(productId);
-    if (!product || product.status === 'archived') {
+    if (!product || product.status !== 'active') {
       const err = new Error(`Product "${item.name || productId}" is no longer available.`);
       err.errorCode = 'PRODUCT_UNAVAILABLE';
+      err.statusCode = 400;
+      throw err;
+    }
+    const seller = product.seller ? await Seller.findById(product.seller) : null;
+    if (!seller || seller.status !== 'approved') {
+      const err = new Error(`Product "${product.name}" is not currently available from an approved seller.`);
+      err.errorCode = 'SELLER_UNAVAILABLE';
+      err.statusCode = 400;
+      throw err;
+    }
+    const store = product.store ? await Store.findById(product.store) : null;
+    if (!store || store.status !== 'active') {
+      const err = new Error(`Product "${product.name}" is not available from an active store.`);
+      err.errorCode = 'STORE_UNAVAILABLE';
       err.statusCode = 400;
       throw err;
     }
@@ -48,7 +77,7 @@ export async function processMultiVendorCheckout({
       image: product.images?.[0] || item.image || '',
       quantity,
       seller: String(product.seller || ''),
-      sellerName: product.storeName || item.sellerName || 'Verified Partner Store',
+      sellerName: product.storeName || 'Seller',
       variant: item.variant || null,
       subtotal: Number(product.price) * quantity,
     });
@@ -57,25 +86,36 @@ export async function processMultiVendorCheckout({
   // 2. Validate Coupon server-side if provided
   let discountAmount = 0;
   let appliedCouponCode = null;
+  let applicableCoupon = null;
   if (couponCode) {
     const coupon = await Coupon.findOne({
       code: String(couponCode).toUpperCase().trim(),
       status: 'active',
     });
-    if (coupon) {
-      const rawSubtotal = validatedItems.reduce((acc, i) => acc + i.subtotal, 0);
-      if (!coupon.minOrder || rawSubtotal >= coupon.minOrder) {
-        if (coupon.discountType === 'percentage') {
-          discountAmount = Math.round((rawSubtotal * coupon.discountValue) / 100);
-          if (coupon.maxDiscount && discountAmount > coupon.maxDiscount) {
-            discountAmount = coupon.maxDiscount;
-          }
-        } else {
-          discountAmount = Math.min(rawSubtotal, coupon.discountValue || 0);
-        }
-        appliedCouponCode = coupon.code;
-      }
+    const now = new Date();
+    if (!coupon || (coupon.startDate && coupon.startDate > now) || (coupon.expiryDate && coupon.expiryDate < now) || (coupon.usageLimit && coupon.usedCount >= coupon.usageLimit)) {
+      const err = new Error('This coupon is invalid, expired, or no longer available.');
+      err.errorCode = 'COUPON_UNAVAILABLE';
+      err.statusCode = 400;
+      throw err;
     }
+
+    const rawSubtotal = validatedItems.reduce((acc, i) => acc + i.subtotal, 0);
+    if (coupon.minOrder && rawSubtotal < coupon.minOrder) {
+      const err = new Error('The cart subtotal does not meet this coupon’s minimum order requirement.');
+      err.errorCode = 'COUPON_MINIMUM_NOT_MET';
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (coupon.discountType === 'percentage') {
+      discountAmount = Math.round((rawSubtotal * coupon.discountValue) / 100);
+      if (coupon.maxDiscount && discountAmount > coupon.maxDiscount) discountAmount = coupon.maxDiscount;
+    } else {
+      discountAmount = Math.min(rawSubtotal, coupon.discountValue || 0);
+    }
+    applicableCoupon = coupon;
+    appliedCouponCode = coupon.code;
   }
 
   // 3. Group verified items by seller
@@ -99,22 +139,49 @@ export async function processMultiVendorCheckout({
   const session = await mongoose.startSession();
   session.startTransaction();
 
-  const reservedItems = [];
-
   try {
     // 5. Reserve inventory atomically
     for (const item of validatedItems) {
       await reserveInventory(item.productId, item.quantity, session);
-      reservedItems.push({ productId: item.productId, quantity: item.quantity });
+    }
+
+    if (applicableCoupon) {
+      const now = new Date();
+      const couponFilter = {
+        _id: applicableCoupon._id,
+        status: 'active',
+        $and: [
+          { $or: [{ startDate: { $exists: false } }, { startDate: null }, { startDate: { $lte: now } }] },
+          { $or: [{ expiryDate: { $exists: false } }, { expiryDate: null }, { expiryDate: { $gte: now } }] },
+          ...(applicableCoupon.usageLimit ? [{ usedCount: { $lt: applicableCoupon.usageLimit } }] : []),
+        ],
+      };
+      const couponUpdate = await Coupon.updateOne(couponFilter, { $inc: { usedCount: 1 } }, { session });
+      if (couponUpdate.modifiedCount !== 1) {
+        const err = new Error('This coupon was just used up. Choose another coupon.');
+        err.errorCode = 'COUPON_UNAVAILABLE';
+        err.statusCode = 409;
+        throw err;
+      }
     }
 
     // 6. Determine Payment Status and Method
-    const paymentStatus = paymentDetails?.status === 'paid' ? 'paid' : 'pending';
-    const paymentMethod = paymentDetails?.method || 'Pay on Delivery';
+    const requestedPaymentMethod = paymentMethod;
+    if (requestedPaymentMethod !== 'COD') {
+      const err = new Error('Select a supported payment method.');
+      err.statusCode = 400;
+      err.errorCode = 'INVALID_PAYMENT_METHOD';
+      throw err;
+    }
+    const paymentMethod = requestedPaymentMethod;
+    const paymentStatus = 'PENDING';
 
     // 7. Create Parent Order
     const totalCartAmount = validatedItems.reduce((acc, i) => acc + i.subtotal, 0);
-    const finalAmount = Math.max(0, totalCartAmount - discountAmount);
+    const shippingFee = totalCartAmount > 5000 ? 0 : 99;
+    const taxableAmount = Math.max(0, totalCartAmount - discountAmount);
+    const taxAmount = Math.round(taxableAmount * 0.05);
+    const finalAmount = taxableAmount + shippingFee + taxAmount;
     const orderNumber = `ORD-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
     const [parentOrder] = await Order.create(
@@ -124,14 +191,14 @@ export async function processMultiVendorCheckout({
           customer: customerId,
           items: validatedItems,
           totalAmount: finalAmount,
+          subtotalAmount: totalCartAmount,
           discountAmount,
+          shippingFee,
+          taxAmount,
           couponApplied: appliedCouponCode,
           paymentStatus,
-          paymentDetails: {
-            method: paymentMethod,
-            status: paymentStatus,
-            transactionId: paymentDetails?.transactionId || `TXN-${Date.now()}`,
-          },
+          paymentMethod,
+          paymentDetails: { method: paymentMethod },
           shippingAddress: shippingAddress || {},
           status: 'CONFIRMED',
           sellerOrders: [],
@@ -140,18 +207,13 @@ export async function processMultiVendorCheckout({
       { session }
     );
 
+    const payment = await createCODPayment({ order: parentOrder, userId: customerId, session });
+
     // 8. Create partitioned Seller Orders
     const createdSellerOrders = [];
     for (let i = 0; i < sellerIds.length; i++) {
       const sId = sellerIds[i];
       const group = sellerGroups[sId];
-
-      // Simulated fault injection test hook
-      if (simulateSellerFailure && (i >= 2 || (sellerIds.length <= 2 && i === 1))) {
-        const err = new Error(`Simulated vendor fulfillment failure for: ${group.sellerName}`);
-        err.errorCode = 'CHECKOUT_TRANSACTION_FAILED';
-        throw err;
-      }
 
       const platformFee = Math.round(group.subtotal * 0.10);
       const sellerEarnings = group.subtotal - platformFee;
@@ -184,28 +246,30 @@ export async function processMultiVendorCheckout({
       { session }
     );
 
+    await Cart.updateOne({ user: customerId }, { $set: { items: [] } }, { session });
+    await Notification.create([{
+      user: customerId,
+      type: 'ORDER_STATUS',
+      title: 'Order placed',
+      message: `Order ${parentOrder.orderNumber} was placed successfully.`,
+      metadata: { orderId: String(parentOrder._id), status: parentOrder.status },
+    }], { session });
+
     // 9. Commit Transaction atomically
     await session.commitTransaction();
     session.endSession();
 
-    // Clear cart on successful commit
-    if (customerId) {
-      await Cart.updateOne({ user: customerId }, { $set: { items: [] } });
-    }
-
     return {
       success: true,
-      message:
-        paymentStatus === 'paid'
-          ? 'Order placed and payment processed successfully.'
-          : 'Order created successfully! Payment is pending.',
+      message: 'Order placed successfully with Cash on Delivery.',
       data: {
         order: parentOrder,
         sellerOrders: createdSellerOrders,
+        payment,
       },
     };
   } catch (error) {
-    // 10. Rollback transaction and restore inventory
+    // 10. Aborting the transaction restores all inventory and order writes.
     try {
       await session.abortTransaction();
     } catch (_) {
@@ -213,23 +277,15 @@ export async function processMultiVendorCheckout({
     }
     session.endSession();
 
-    // Release any inventory that was reserved prior to failure
-    for (const item of reservedItems) {
-      try {
-        await releaseInventory(item.productId, item.quantity);
-      } catch (_) {
-        // Individual release failure ignored — stock will be reconciled
-      }
+    const isClientError = Number(error.statusCode) >= 400 && Number(error.statusCode) < 500;
+    if (!isClientError) {
+      console.error('[checkout] Database transaction failed:', error.name, error.code, error.message);
     }
-
-    const customError = new Error(
-      error.errorCode === 'CHECKOUT_TRANSACTION_FAILED'
-        ? error.message
-        : "Checkout couldn't be completed. No inventory was permanently deducted."
+    const checkoutError = new Error(
+      isClientError ? error.message : 'Checkout could not be completed. Please try again.'
     );
-    customError.errorCode = 'CHECKOUT_TRANSACTION_FAILED';
-    customError.statusCode = 400;
-    customError.originalMessage = error.message;
-    throw customError;
+    checkoutError.statusCode = isClientError ? error.statusCode : 500;
+    checkoutError.errorCode = error.errorCode || 'CHECKOUT_TRANSACTION_FAILED';
+    throw checkoutError;
   }
 }

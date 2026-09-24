@@ -5,6 +5,7 @@ import {
   getDeliveryById,
   updateDeliveryStatus,
   addTrackingUpdate,
+  collectCODPayment,
 } from '../controllers/deliveryController.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
 import { requireRoles } from '../middleware/roleMiddleware.js';
@@ -17,6 +18,7 @@ router.get('/', getDeliveries);
 router.get('/active', getActiveDelivery);
 router.get('/:id', getDeliveryById);
 router.patch('/:id/status', updateDeliveryStatus);
+router.post('/:id/collect-payment', collectCODPayment);
 router.post('/:id/tracking', addTrackingUpdate);
 
 export default router;

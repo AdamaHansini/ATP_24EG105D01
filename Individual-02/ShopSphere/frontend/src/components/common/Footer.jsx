@@ -1,6 +1,6 @@
 // frontend/src/components/common/Footer.jsx
 import React from 'react';
-import { ShoppingBag, ShieldCheck, RefreshCw, Sparkles, Heart } from 'lucide-react';
+import { ShoppingBag, ShieldCheck, Sparkles, Heart } from 'lucide-react';
 
 export default function Footer({ onNavigate }) {
   return (
@@ -16,7 +16,7 @@ export default function Footer({ onNavigate }) {
               <span>ShopSphere</span>
             </div>
             <p className="text-slate-400 text-xs leading-relaxed">
-              Full-Stack Multi-Vendor E-Commerce Marketplace built with automated atomic rollback, Gemini AI taxonomy prediction, and instant price drop alerts.
+              A multi-vendor marketplace for discovering products, managing orders, and supporting customers.
             </p>
           </div>
 
@@ -33,15 +33,6 @@ export default function Footer({ onNavigate }) {
                 >
                   <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
                   <span>AI Category &amp; Tag Predictor</span>
-                </button>
-              </li>
-              <li>
-                <button
-                  onClick={() => onNavigate('rollback-lab')}
-                  className="hover:text-white flex items-center gap-1.5"
-                >
-                  <RefreshCw className="w-3.5 h-3.5 text-rose-400" />
-                  <span>Atomic Multi-Vendor Rollback</span>
                 </button>
               </li>
               <li>
@@ -93,10 +84,10 @@ export default function Footer({ onNavigate }) {
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-slate-300">
                 <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                <span>Zero Inventory Leakage Guarantee</span>
+                <span>Inventory checked at checkout</span>
               </div>
               <p className="text-[11px] text-slate-500">
-                Mongoose sessions &amp; in-memory proxy engine enforce ACID-compliant two-phase checkout across all vendor sub-orders.
+                Orders, inventory, and customer data are managed by the ShopSphere backend.
               </p>
             </div>
           </div>
@@ -105,7 +96,7 @@ export default function Footer({ onNavigate }) {
         <div className="border-t border-slate-800 pt-6 flex flex-wrap justify-between items-center gap-4 text-[11px]">
           <div>&copy; {new Date().getFullYear()} ShopSphere Inc. All rights reserved.</div>
           <div className="flex gap-4">
-            <span className="text-slate-400">Production-Grade Architecture Specification</span>
+            <span className="text-slate-400">ShopSphere Marketplace</span>
           </div>
         </div>
       </div>

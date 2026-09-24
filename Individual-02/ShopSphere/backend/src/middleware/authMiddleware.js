@@ -1,14 +1,7 @@
 // backend/src/middleware/authMiddleware.js
 import jwt from 'jsonwebtoken';
 import { User } from '../models/index.js';
-
-function getJwtSecret() {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    throw new Error('JWT_SECRET environment variable is not set.');
-  }
-  return secret;
-}
+import { getJwtSecret } from '../config/jwt.js';
 
 
 export async function authenticateToken(req, res, next) {
@@ -18,8 +11,6 @@ export async function authenticateToken(req, res, next) {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     token = authHeader.split(' ')[1];
-  } else if (req.cookies && req.cookies.token) {
-    token = req.cookies.token;
   }
 
   if (!token) {
@@ -30,8 +21,19 @@ export async function authenticateToken(req, res, next) {
     });
   }
 
+  let decoded;
+  const secret = getJwtSecret();
   try {
-    const decoded = jwt.verify(token, getJwtSecret());
+    decoded = jwt.verify(token, secret);
+  } catch (err) {
+    return res.status(401).json({
+      success: false,
+      message: 'Invalid or expired authentication token.',
+      errorCode: 'INVALID_TOKEN',
+    });
+  }
+
+  try {
     const user = await User.findById(decoded.id);
     if (!user) {
       return res.status(401).json({
@@ -50,11 +52,7 @@ export async function authenticateToken(req, res, next) {
     req.user = user;
     next();
   } catch (err) {
-    return res.status(401).json({
-      success: false,
-      message: 'Invalid or expired authentication token.',
-      errorCode: 'INVALID_TOKEN',
-    });
+    return next(err);
   }
 }
 
@@ -68,8 +66,6 @@ export async function optionalAuth(req, res, next) {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     token = authHeader.split(' ')[1];
-  } else if (req.cookies && req.cookies.token) {
-    token = req.cookies.token;
   }
 
   if (!token) {
@@ -79,11 +75,13 @@ export async function optionalAuth(req, res, next) {
   try {
     const decoded = jwt.verify(token, getJwtSecret());
     const user = await User.findById(decoded.id);
-    if (user && !user.isSuspended) {
-      req.user = user;
+    if (user?.isSuspended) {
+      return res.status(403).json({ success: false, message: 'Your account has been suspended by administrators.', errorCode: 'ACCOUNT_SUSPENDED' });
     }
+    if (user) req.user = user;
   } catch (e) {
-    // Ignore invalid token on optional auth
+    if (e.name === 'JsonWebTokenError' || e.name === 'TokenExpiredError') return next();
+    return next(e);
   }
   next();
 }

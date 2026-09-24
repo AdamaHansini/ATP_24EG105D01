@@ -1,6 +1,13 @@
-import { Product, Inventory, Category, Store, Seller, AuditLog, Review, BrowsingHistory } from '../models/index.js';
+import { Product, Inventory, Category, Store, Seller, AuditLog, Review, BrowsingHistory, Order } from '../models/index.js';
 import { sendPriceDropNotification } from '../services/priceDropService.js';
+import { updateStock } from '../services/inventoryService.js';
 import { toPlain } from '../utils/toPlain.js';
+
+function getHistoryOwner(req) {
+  if (req.user?._id) return String(req.user._id);
+  const guestId = String(req.headers['x-guest-id'] || '').trim();
+  return /^[a-zA-Z0-9_-]{16,128}$/.test(guestId) ? `guest:${guestId}` : null;
+}
 
 export async function getProducts(req, res, next) {
   try {
@@ -19,6 +26,12 @@ export async function getProducts(req, res, next) {
     } = req.query;
 
     let products = await Product.find({ status: 'active' });
+    const sellerIds = [...new Set(products.map((product) => product.seller).filter(Boolean).map(String))];
+    const sellers = await Seller.find({ _id: { $in: sellerIds }, status: 'approved' });
+    const approvedSellerIds = new Set(sellers.map((seller) => String(seller._id)));
+    const stores = await Store.find({ seller: { $in: Array.from(approvedSellerIds) }, status: 'active' });
+    const activeStoreSellerIds = new Set(stores.map((store) => String(store.seller)));
+    products = products.filter((product) => !product.seller || activeStoreSellerIds.has(String(product.seller)));
 
     // Search filter across: Name, Description, Brand, Category, Tags, Keywords
     if (search) {
@@ -91,7 +104,7 @@ export async function getProducts(req, res, next) {
         const plainP = toPlain(p);
         return {
           ...plainP,
-          availableStock: inv ? inv.availableStock : (p.inventory || 20),
+          availableStock: inv ? inv.availableStock : (p.inventory ?? 0),
         };
       })
     );
@@ -120,6 +133,13 @@ export async function getProductById(req, res, next) {
     if (!product) {
       return res.status(404).json({ success: false, message: 'Product not found', errorCode: 'PRODUCT_NOT_FOUND' });
     }
+    if (product.seller) {
+      const seller = await Seller.findById(product.seller);
+      const store = product.store ? await Store.findById(product.store) : null;
+      if (!seller || seller.status !== 'approved' || !store || store.status !== 'active' || product.status !== 'active') {
+        return res.status(404).json({ success: false, message: 'Product not found', errorCode: 'PRODUCT_NOT_FOUND' });
+      }
+    }
 
     const inv = await Inventory.findOne({ product: product._id });
     const store = product.store ? await Store.findById(product.store) : null;
@@ -131,7 +151,7 @@ export async function getProductById(req, res, next) {
       data: {
         product: {
           ...plainProduct,
-          availableStock: inv ? inv.availableStock : (product.inventory || 25),
+          availableStock: inv ? inv.availableStock : (product.inventory ?? 0),
           storeDetails: toPlain(store),
         },
       },
@@ -158,12 +178,17 @@ export async function createProduct(req, res, next) {
       specifications = {},
       attributes = {},
       variants = [],
-      inventory = 50,
+      inventory = 0,
       aiMetadata,
     } = req.body;
 
-    if (!name || !price) {
-      return res.status(400).json({ success: false, message: 'Product name and price are required' });
+    const numericPrice = Number(price);
+    const numericInventory = Number(inventory);
+    if (!String(name || '').trim() || !String(category || '').trim() || !Number.isFinite(numericPrice) || numericPrice <= 0) {
+      return res.status(400).json({ success: false, message: 'Product name, category, and a positive price are required' });
+    }
+    if (!Number.isInteger(numericInventory) || numericInventory < 0) {
+      return res.status(400).json({ success: false, message: 'Inventory must be a whole number of zero or more' });
     }
 
     // Look up the seller document for the authenticated user
@@ -175,6 +200,9 @@ export async function createProduct(req, res, next) {
         errorCode: 'SELLER_NOT_FOUND',
       });
     }
+    if (sellerDoc.status !== 'approved') {
+      return res.status(403).json({ success: false, message: 'Your seller account must be approved before publishing products.' });
+    }
 
     const store = await Store.findOne({ seller: sellerDoc._id });
 
@@ -182,18 +210,18 @@ export async function createProduct(req, res, next) {
       name,
       description,
       shortDescription,
-      brand: brand || 'Generic',
-      category: category || 'General',
+      brand: brand ? String(brand).trim() : undefined,
+      category: String(category).trim(),
       subcategory: subcategory || '',
       tags,
       keywords,
-      price: Number(price),
+      price: numericPrice,
       discountPrice: discountPrice ? Number(discountPrice) : undefined,
       images: images.length > 0 ? images : [],
       specifications,
       attributes,
       variants,
-      inventory: Number(inventory),
+      inventory: numericInventory,
       seller: sellerDoc._id,
       store: store ? store._id : null,
       storeName: store ? store.name : sellerDoc.storeName,
@@ -206,9 +234,9 @@ export async function createProduct(req, res, next) {
     // Initialize Inventory record
     await Inventory.create({
       product: newProduct._id,
-      totalStock: Number(inventory),
+      totalStock: numericInventory,
       reservedStock: 0,
-      availableStock: Number(inventory),
+      availableStock: numericInventory,
     });
 
     res.status(201).json({
@@ -244,10 +272,50 @@ export async function updateProduct(req, res, next) {
     }
 
     const oldPrice = Number(existingProduct.price);
-    const updateData = { ...req.body };
+    const editableFields = [
+      'name', 'description', 'shortDescription', 'brand', 'category', 'subcategory',
+      'tags', 'keywords', 'price', 'discountPrice', 'images', 'specifications',
+      'attributes', 'variants', 'inventory',
+    ];
+    const updateData = Object.fromEntries(
+      editableFields.filter((field) => Object.hasOwn(req.body, field)).map((field) => [field, req.body[field]])
+    );
+    if (!Object.keys(updateData).length) {
+      return res.status(400).json({ success: false, message: 'No editable product fields were provided' });
+    }
+    if (updateData.price !== undefined && (!Number.isFinite(Number(updateData.price)) || Number(updateData.price) <= 0)) {
+      return res.status(400).json({ success: false, message: 'Product price must be greater than zero' });
+    }
+    let inventoryRecord = null;
+    if (updateData.inventory !== undefined) {
+      const requestedStock = Number(updateData.inventory);
+      const currentInventory = await Inventory.findOne({ product: productId });
+      const reservedStock = currentInventory?.reservedStock || 0;
+      if (!Number.isInteger(requestedStock) || requestedStock < reservedStock) {
+        return res.status(400).json({ success: false, message: 'Inventory must be a whole number and cannot be less than reserved stock' });
+      }
+      updateData.inventory = requestedStock;
+      inventoryRecord = currentInventory
+        ? await Inventory.findOneAndUpdate(
+          { product: productId },
+          { $set: { totalStock: requestedStock, availableStock: requestedStock - reservedStock } },
+          { new: true, runValidators: true }
+        )
+        : await updateStock(productId, { totalStock: requestedStock });
+    }
 
     // Update Product in DB
-    const updatedProduct = await Product.findByIdAndUpdate(productId, updateData);
+    const updatedProduct = await Product.findByIdAndUpdate(
+      productId,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    );
+    if (!updatedProduct && inventoryRecord) {
+      await Inventory.findOneAndUpdate(
+        { product: productId },
+        { $set: { totalStock: inventoryRecord.totalStock - Number(updateData.inventory) + Number(existingProduct.inventory || 0) } }
+      );
+    }
 
     let priceDropResult = null;
     // Trigger price-drop surveillance when price decreases
@@ -257,8 +325,8 @@ export async function updateProduct(req, res, next) {
         priceDropResult = await sendPriceDropNotification(productId, oldPrice, newPrice);
 
         await AuditLog.create({
-          user: req.user ? req.user._id : 'seller',
-          userName: req.user ? req.user.name : 'Seller',
+          user: req.user._id,
+          userName: req.user.name,
           action: 'PRICE_UPDATED',
           entityType: 'Product',
           entityId: productId,
@@ -321,6 +389,9 @@ export async function getCategories(req, res, next) {
 export async function getProductReviews(req, res, next) {
   try {
     const productId = req.params.id;
+    if (!await Product.exists({ _id: productId })) {
+      return res.status(404).json({ success: false, message: 'Product not found' });
+    }
     const reviews = await Review.find({ product: productId });
     res.json({
       success: true,
@@ -338,23 +409,41 @@ export async function addProductReview(req, res, next) {
     const userId = req.user._id;
     const authorName = req.user.name;
 
-    if (!rating || Number(rating) < 1 || Number(rating) > 5) {
+    const numericRating = Number(rating);
+    if (!Number.isFinite(numericRating) || numericRating < 1 || numericRating > 5) {
       return res.status(400).json({ success: false, message: 'Rating must be between 1 and 5' });
     }
+
+    const product = await Product.findById(productId);
+    if (!product) return res.status(404).json({ success: false, message: 'Product not found' });
+    if (typeof comment !== 'string' || !comment.trim()) {
+      return res.status(400).json({ success: false, message: 'A review comment is required' });
+    }
+    if (await Review.exists({ product: productId, user: userId })) {
+      return res.status(409).json({ success: false, message: 'You have already reviewed this product' });
+    }
+    const verifiedPurchase = Boolean(await Order.exists({
+      customer: userId,
+      status: { $in: ['DELIVERED', 'RETURN_REQUESTED'] },
+      $or: [
+        { 'items.productId': String(productId) },
+        { 'items.product': String(productId) },
+      ],
+    }));
 
     const review = await Review.create({
       product: productId,
       user: userId,
       userName: authorName,
-      rating: Number(rating),
-      comment: comment || '',
-      isVerifiedPurchase: true,
+      rating: numericRating,
+      comment: comment.trim().slice(0, 2000),
+      isVerifiedPurchase: verifiedPurchase,
       createdAt: new Date().toISOString(),
     });
 
     // Recalculate product rating
     const allReviews = await Review.find({ product: productId });
-    const avgRating = (allReviews.reduce((acc, r) => acc + (r.rating || 5), 0) / allReviews.length).toFixed(1);
+    const avgRating = (allReviews.reduce((acc, r) => acc + (r.rating || 0), 0) / allReviews.length).toFixed(1);
     await Product.findByIdAndUpdate(productId, {
       $set: {
         rating: Number(avgRating),
@@ -375,7 +464,8 @@ export async function addProductReview(req, res, next) {
 export async function recordProductView(req, res, next) {
   try {
     const productId = req.params.id;
-    const userId = req.user ? req.user._id : req.headers['x-guest-id'] || 'guest_user';
+    const userId = getHistoryOwner(req);
+    if (!userId) return res.json({ success: true, message: 'View not recorded without a session', data: {} });
 
     await BrowsingHistory.create({
       user: userId,
@@ -391,7 +481,8 @@ export async function recordProductView(req, res, next) {
 
 export async function getRecentlyViewed(req, res, next) {
   try {
-    const userId = req.user ? req.user._id : req.headers['x-guest-id'] || 'guest_user';
+    const userId = getHistoryOwner(req);
+    if (!userId) return res.json({ success: true, data: { products: [] } });
     const views = await BrowsingHistory.find({ user: userId });
     views.sort((a, b) => new Date(b.viewedAt) - new Date(a.viewedAt));
 

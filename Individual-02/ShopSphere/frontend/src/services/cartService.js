@@ -2,6 +2,10 @@
 import { api } from './api.js';
 
 export const cartService = {
+  mergeGuestCart: async () => {
+    const res = await api.post('/cart/merge-guest', {});
+    return res.data;
+  },
   getCart: async () => {
     const res = await api.get('/cart');
     return res.data?.cart;

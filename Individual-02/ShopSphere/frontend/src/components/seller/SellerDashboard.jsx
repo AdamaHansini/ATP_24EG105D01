@@ -27,6 +27,7 @@ export default function SellerDashboard({ onOpenAIPredictor }) {
   const [activeTab, setActiveTab] = useState('overview');
   const [dashboardData, setDashboardData] = useState(null);
   const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -42,18 +43,17 @@ export default function SellerDashboard({ onOpenAIPredictor }) {
     brand: '',
     description: '',
     shortDescription: '',
-    category: 'Electronics',
+    category: '',
     subcategory: '',
     price: '',
     discountPrice: '',
     color: '',
     material: '',
     features: '',
-    inventory: 50,
+    inventory: 0,
     tags: [],
     keywords: [],
-    images: ['https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&q=80'],
-    status: 'active',
+    images: [],
   });
 
   // AI Assistance states for Seller Product Form
@@ -65,14 +65,16 @@ export default function SellerDashboard({ onOpenAIPredictor }) {
   const fetchSellerData = async () => {
     setLoading(true);
     try {
-      const [dashRes, prodRes, ordRes] = await Promise.all([
+      const [dashRes, prodRes, ordRes, categoryRes] = await Promise.all([
         api.get('/seller/dashboard'),
         api.get('/seller/products'),
         api.get('/seller/orders'),
+        api.get('/products/categories/list'),
       ]);
       setDashboardData(dashRes.data);
       setProducts(prodRes.data?.products || []);
       setOrders(ordRes.data?.orders || []);
+      setCategories(categoryRes.data?.categories || []);
     } catch (e) {
       console.warn('Seller dashboard load error:', e);
     } finally {
@@ -107,7 +109,7 @@ export default function SellerDashboard({ onOpenAIPredictor }) {
 
   const handleUpdateOrderStatus = async (orderId, newStatus) => {
     try {
-      await api.patch(`/orders/${orderId}/status`, {
+      await api.patch(`/seller/orders/${orderId}/status`, {
         status: newStatus,
         isSellerOrder: true,
       });
@@ -149,8 +151,6 @@ export default function SellerDashboard({ onOpenAIPredictor }) {
       subcategory: aiSuggestion.subcategory || prev.subcategory,
       tags: aiSuggestion.tags || prev.tags,
       keywords: aiSuggestion.keywords || prev.keywords,
-      price: aiSuggestion.pricing?.suggestedPrice || prev.price,
-      shortDescription: aiSuggestion.seoDescription || prev.shortDescription,
     }));
   };
 
@@ -171,11 +171,17 @@ export default function SellerDashboard({ onOpenAIPredictor }) {
         aiMetadata: aiSuggestion
           ? {
               generated: true,
-              confidence: aiSuggestion.confidence?.category || 0.95,
+              confidence: Number(aiSuggestion.confidence),
               generatedAt: new Date().toISOString(),
             }
           : { generated: false },
       });
+      setProductForm({
+        name: '', brand: '', description: '', shortDescription: '', category: '', subcategory: '',
+        price: '', discountPrice: '', color: '', material: '', features: '', inventory: 0,
+        tags: [], keywords: [], images: [],
+      });
+      setAiSuggestion(null);
       setProductCreatedSuccess(true);
       await fetchSellerData();
       setTimeout(() => {
@@ -217,7 +223,7 @@ export default function SellerDashboard({ onOpenAIPredictor }) {
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-bold text-slate-900">{store.name || 'Merchant Hub'}</h1>
               <span className="text-[10px] font-bold uppercase bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">
-                Verified Store
+                Store
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
@@ -336,8 +342,9 @@ export default function SellerDashboard({ onOpenAIPredictor }) {
                 <div className="divide-y divide-slate-100">
                   {orders.slice(0, 5).map((o) => (
                     <div key={o._id} className="py-2.5 flex items-center justify-between">
-                      <div>
-                        <span className="font-bold text-slate-800">Sub-Order #{o._id}</span>
+                        <div>
+                          <span className="font-bold text-slate-800">Order #{o.parentOrderNumber || o._id}</span>
+                          <span className="block text-[11px] text-slate-500">{o.paymentMethod || 'UNSPECIFIED'} | {o.paymentStatus || 'PENDING'} | {o.customerName || 'Customer'}</span>
                         <div className="text-[11px] text-slate-400">
                           {o.items?.length} items &bull; ₹{Number(o.subtotal).toLocaleString()}
                         </div>
@@ -415,11 +422,9 @@ export default function SellerDashboard({ onOpenAIPredictor }) {
                 {products.map((p) => (
                   <tr key={p._id} className="hover:bg-slate-50">
                     <td className="p-3 flex items-center gap-3">
-                      <img
-                        src={p.images?.[0] || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&q=80'}
-                        alt=""
-                        className="w-10 h-10 object-cover rounded-lg border border-slate-200"
-                      />
+                      {p.images?.[0] ? (
+                        <img src={p.images[0]} alt={p.name} className="w-10 h-10 object-cover rounded-lg border border-slate-200" />
+                      ) : <Package className="w-10 h-10 p-2 text-slate-400 bg-slate-100 rounded-lg" />}
                       <span className="font-semibold text-slate-900 max-w-xs truncate">{p.name}</span>
                     </td>
                     <td className="p-3 text-slate-600">{p.category}</td>
@@ -429,7 +434,7 @@ export default function SellerDashboard({ onOpenAIPredictor }) {
                           (p.inventory || 0) < 15 ? 'text-amber-600' : 'text-emerald-700'
                         }`}
                       >
-                        {p.inventory || 25} units
+                        {p.inventory ?? 0} units
                       </span>
                     </td>
                     <td className="p-3 font-bold text-slate-900">₹{Number(p.price).toLocaleString()}</td>
@@ -561,12 +566,8 @@ export default function SellerDashboard({ onOpenAIPredictor }) {
                     <strong>{aiSuggestion.subcategory}</strong>
                   </div>
                   <div>
-                    <span className="text-slate-400">Suggested Price:</span>{' '}
-                    <strong>₹{aiSuggestion.pricing?.suggestedPrice || 2999}</strong>
-                  </div>
-                  <div>
                     <span className="text-slate-400">Confidence:</span>{' '}
-                    <strong>{Math.round((aiSuggestion.confidence?.category || 0.95) * 100)}%</strong>
+                    <strong>{Math.round(Number(aiSuggestion.confidence) * 100)}%</strong>
                   </div>
                 </div>
 
@@ -592,14 +593,15 @@ export default function SellerDashboard({ onOpenAIPredictor }) {
               <div>
                 <label className="font-semibold text-slate-700 block mb-1">Department / Category</label>
                 <select
+                  required
                   value={productForm.category}
                   onChange={(e) => setProductForm({ ...productForm, category: e.target.value })}
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900"
                 >
-                  <option value="Electronics">Electronics</option>
-                  <option value="Fashion">Fashion</option>
-                  <option value="Home & Kitchen">Home &amp; Kitchen</option>
-                  <option value="Sports & Fitness">Sports &amp; Fitness</option>
+                  <option value="">Select a category</option>
+                  {categories.map((category) => (
+                    <option key={category._id} value={category.name}>{category.name}</option>
+                  ))}
                 </select>
               </div>
               <div>
@@ -752,7 +754,7 @@ export default function SellerDashboard({ onOpenAIPredictor }) {
                 {products.map((p) => (
                   <tr key={p._id} className="hover:bg-slate-50">
                     <td className="p-3 font-semibold text-slate-800">{p.name}</td>
-                    <td className="p-3 font-mono font-bold text-slate-900">{p.inventory || 20}</td>
+                    <td className="p-3 font-mono font-bold text-slate-900">{p.inventory ?? 0}</td>
                     <td className="p-3">
                       {(p.inventory || 0) < 15 ? (
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">
@@ -782,12 +784,13 @@ export default function SellerDashboard({ onOpenAIPredictor }) {
             <p className="text-slate-400 py-6 text-center">No orders routed to your store yet.</p>
           ) : (
             <div className="space-y-3">
-              {orders.map((o) => (
-                <div
+                {orders.map((o) => (
+                  <div
                   key={o._id}
                   className="p-4 bg-slate-50 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-4"
                 >
-                  <div>
+                    <div>
+                      <p className="font-semibold text-slate-800">Payment: {o.paymentMethod || 'UNSPECIFIED'} | {o.paymentStatus || 'PENDING'}</p>
                     <span className="font-bold text-slate-900">Sub-Order #{o._id}</span>
                     <div className="text-slate-500 mt-0.5">
                       Items: {o.items?.length} &bull; Vendor Revenue: ₹{Number(o.sellerEarnings || o.subtotal).toLocaleString()}
@@ -873,7 +876,7 @@ export default function SellerDashboard({ onOpenAIPredictor }) {
               <input
                 type="text"
                 disabled
-                value={store.name || 'TechNova Gadgets'}
+                value={store.name || ''}
                 className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-700"
               />
             </div>
@@ -891,7 +894,7 @@ export default function SellerDashboard({ onOpenAIPredictor }) {
               <textarea
                 rows={2}
                 disabled
-                value={store.description || 'Premier manufacturer and authorized distributor.'}
+                value={store.description || ''}
                 className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-700"
               />
             </div>

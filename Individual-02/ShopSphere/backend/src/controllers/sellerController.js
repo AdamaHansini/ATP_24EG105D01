@@ -16,9 +16,7 @@ async function getSellerContext(req) {
     store = await Store.create({
       seller: sellerDoc._id,
       name: sellerDoc.storeName || `${req.user.name}'s Store`,
-      description: 'Quality goods directly from authorized seller',
-      rating: 4.9,
-      status: 'active',
+      status: sellerDoc.status === 'approved' ? 'active' : 'pending',
     });
   }
   return { userId, sellerDoc, sellerIds, store };
@@ -27,6 +25,9 @@ async function getSellerContext(req) {
 export async function getSellerDashboard(req, res, next) {
   try {
     const { sellerIds, store } = await getSellerContext(req);
+    if (!store || store.status !== 'active') {
+      return res.status(403).json({ success: false, message: 'Your seller account is awaiting approval.' });
+    }
 
     const products = await Product.find({ seller: { $in: sellerIds } });
     const orders = await SellerOrder.find({ seller: { $in: sellerIds } });
@@ -39,7 +40,7 @@ export async function getSellerDashboard(req, res, next) {
     res.json({
       success: true,
       data: {
-        store: store ? toPlain(store) : { name: `${req.user?.name || 'Seller'}'s Store`, rating: 5.0, status: 'active' },
+        store: store ? toPlain(store) : null,
         productsCount: products.length,
         ordersCount: orders.length,
         totalInventory,
@@ -56,7 +57,10 @@ export async function getSellerDashboard(req, res, next) {
 
 export async function getSellerProducts(req, res, next) {
   try {
-    const { sellerIds } = await getSellerContext(req);
+    const { sellerIds, store } = await getSellerContext(req);
+    if (!store || store.status !== 'active') {
+      return res.status(403).json({ success: false, message: 'Your seller account is awaiting approval.' });
+    }
     const products = await Product.find({ seller: { $in: sellerIds }, status: { $ne: 'archived' } });
     
     // Attach live inventory
@@ -81,12 +85,25 @@ export async function getSellerProducts(req, res, next) {
 
 export async function getSellerOrders(req, res, next) {
   try {
-    const { sellerIds } = await getSellerContext(req);
+    const { sellerIds, store } = await getSellerContext(req);
+    if (!store || store.status !== 'active') {
+      return res.status(403).json({ success: false, message: 'Your seller account is awaiting approval.' });
+    }
     // Strict isolation: Seller ONLY sees orders containing their products
     const orders = await SellerOrder.find({ seller: { $in: sellerIds } });
     orders.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    const enrichedOrders = await Promise.all(orders.map(async (sellerOrder) => {
+      const parentOrder = await Order.findById(sellerOrder.parentOrder);
+      return {
+        ...toPlain(sellerOrder),
+        parentOrderNumber: parentOrder?.orderNumber,
+        paymentMethod: parentOrder?.paymentMethod || 'UNSPECIFIED',
+        paymentStatus: String(parentOrder?.paymentStatus || 'PENDING').toUpperCase(),
+        customerName: parentOrder?.shippingAddress?.fullName || 'Customer',
+      };
+    }));
 
-    res.json({ success: true, data: { orders: toPlain(orders) } });
+    res.json({ success: true, data: { orders: enrichedOrders } });
   } catch (err) {
     next(err);
   }
@@ -94,21 +111,16 @@ export async function getSellerOrders(req, res, next) {
 
 export async function getSellerOrderById(req, res, next) {
   try {
-    const { sellerIds } = await getSellerContext(req);
+    const { sellerIds, store } = await getSellerContext(req);
+    if (!store || store.status !== 'active') {
+      return res.status(403).json({ success: false, message: 'Your seller account is awaiting approval.' });
+    }
     const orderId = req.params.id;
 
     // Strict ownership verification
-    const sellerOrder = await SellerOrder.findById(orderId);
+    const sellerOrder = await SellerOrder.findOne({ _id: orderId, seller: { $in: sellerIds } });
     if (!sellerOrder) {
       return res.status(404).json({ success: false, message: 'Seller order not found' });
-    }
-
-    if (!sellerIds.includes(String(sellerOrder.seller)) && req.user?.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied. You can only view orders containing your store products.',
-        errorCode: 'FORBIDDEN_ORDER_ACCESS',
-      });
     }
 
     const parentOrder = sellerOrder.parentOrder ? await Order.findById(sellerOrder.parentOrder) : null;
@@ -130,38 +142,40 @@ export async function getSellerOrderById(req, res, next) {
 
 export async function updateSellerOrderStatus(req, res, next) {
   try {
-    const { sellerIds } = await getSellerContext(req);
+    const { sellerIds, store } = await getSellerContext(req);
+    if (!store || store.status !== 'active') {
+      return res.status(403).json({ success: false, message: 'Your seller account is awaiting approval.' });
+    }
     const orderId = req.params.id;
     const { status } = req.body;
 
-    const sellerOrder = await SellerOrder.findById(orderId);
+    const sellerOrder = await SellerOrder.findOne({ _id: orderId, seller: { $in: sellerIds } });
     if (!sellerOrder) {
       return res.status(404).json({ success: false, message: 'Seller order not found' });
     }
 
-    if (!sellerIds.includes(String(sellerOrder.seller)) && req.user?.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied. You can only modify orders containing your store products.',
-        errorCode: 'FORBIDDEN_ORDER_UPDATE',
-      });
-    }
-
-    const validStatuses = [
-      'CONFIRMED',
-      'PROCESSING',
-      'PACKED',
-      'SHIPPED',
-      'OUT_FOR_DELIVERY',
-      'DELIVERED',
-      'CANCELLED',
-    ];
+    const validStatuses = ['CONFIRMED', 'PROCESSING', 'PACKED', 'SHIPPED', 'OUT_FOR_DELIVERY'];
 
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
         message: `Invalid status: ${status}. Must be one of: ${validStatuses.join(', ')}`,
       });
+    }
+
+    const allowedNext = {
+      CONFIRMED: ['PROCESSING', 'CANCELLED'],
+      PROCESSING: ['PACKED', 'CANCELLED'],
+      PACKED: ['SHIPPED', 'CANCELLED'],
+      SHIPPED: ['OUT_FOR_DELIVERY'],
+      OUT_FOR_DELIVERY: ['DELIVERED'],
+      DELIVERED: [],
+      CANCELLED: [],
+      RETURN_REQUESTED: ['RETURNED', 'DELIVERED'],
+      RETURNED: [],
+    };
+    if (status !== sellerOrder.status && !(allowedNext[sellerOrder.status] || []).includes(status)) {
+      return res.status(409).json({ success: false, message: `Invalid order transition from ${sellerOrder.status} to ${status}` });
     }
 
     const updated = await SellerOrder.findByIdAndUpdate(
@@ -182,7 +196,10 @@ export async function updateSellerOrderStatus(req, res, next) {
 
 export async function getSellerSettlements(req, res, next) {
   try {
-    const { sellerIds } = await getSellerContext(req);
+    const { sellerIds, store } = await getSellerContext(req);
+    if (!store || store.status !== 'active') {
+      return res.status(403).json({ success: false, message: 'Your seller account is awaiting approval.' });
+    }
     const data = await computeSellerSettlements(sellerIds[0] || '');
     res.json({ success: true, data });
   } catch (err) {
@@ -193,9 +210,12 @@ export async function getSellerSettlements(req, res, next) {
 export async function updateStore(req, res, next) {
   try {
     const { sellerIds, store } = await getSellerContext(req);
-    let updated = await Store.findOneAndUpdate({ seller: { $in: sellerIds } }, req.body, { new: true });
+    const allowedFields = ['name', 'description', 'logo', 'banner'];
+    const update = Object.fromEntries(allowedFields.filter((key) => Object.hasOwn(req.body, key)).map((key) => [key, req.body[key]]));
+    if (!Object.keys(update).length) return res.status(400).json({ success: false, message: 'No editable store fields were provided' });
+    let updated = await Store.findOneAndUpdate({ seller: { $in: sellerIds } }, { $set: update }, { new: true, runValidators: true });
     if (!updated && store) {
-      updated = await Store.findByIdAndUpdate(store._id, req.body, { new: true });
+      updated = await Store.findByIdAndUpdate(store._id, { $set: update }, { new: true, runValidators: true });
     }
     res.json({ success: true, message: 'Store profile updated', data: { store: toPlain(updated || store) } });
   } catch (err) {

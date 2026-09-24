@@ -22,7 +22,6 @@ import {
   LogIn,
   Layers,
   Sparkles,
-  RotateCcw,
 } from 'lucide-react';
 import Badge from '../ui/Badge.jsx';
 
@@ -169,15 +168,6 @@ export default function Navbar({
                   }`}
                 >
                   Admin Console
-                </Link>
-                <Link
-                  to="/admin/rollback-lab"
-                  className={`flex items-center gap-1 px-3 py-1.5 rounded-lg hover:text-indigo-600 hover:bg-slate-100/70 transition-colors ${
-                    location.pathname === '/admin/rollback-lab' ? 'text-indigo-600 font-bold bg-indigo-50/50' : ''
-                  }`}
-                >
-                  <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
-                  Rollback Lab
                 </Link>
               </>
             )}
@@ -463,14 +453,6 @@ export default function Navbar({
                             <Shield className="w-4 h-4 text-rose-600" />
                             <span>Admin Console</span>
                           </Link>
-                          <Link
-                            to="/admin/rollback-lab"
-                            onClick={() => setShowAccountMenu(false)}
-                            className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 rounded-lg transition-colors"
-                          >
-                            <RotateCcw className="w-4 h-4 text-rose-600" />
-                            <span>Rollback Lab</span>
-                          </Link>
                         </>
                       )}
 
@@ -640,13 +622,6 @@ export default function Navbar({
                     className="p-2.5 rounded-xl bg-slate-50 hover:bg-rose-50 hover:text-rose-600"
                   >
                     Admin Console
-                  </Link>
-                  <Link
-                    to="/admin/rollback-lab"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="p-2.5 rounded-xl bg-slate-50 hover:bg-rose-50 hover:text-rose-600"
-                  >
-                    Rollback Lab
                   </Link>
                 </>
               )}

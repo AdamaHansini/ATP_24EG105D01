@@ -1,5 +1,5 @@
 // backend/src/ai/recommendationService.js
-import { Product, Wishlist, BrowsingHistory } from '../models/index.js';
+import { Product, Wishlist, BrowsingHistory, Inventory } from '../models/index.js';
 
 export async function getRecommendationsForUser(userId, currentProductId = null) {
   let targetCategory = null;
@@ -15,6 +15,14 @@ export async function getRecommendationsForUser(userId, currentProductId = null)
 
   if (!targetCategory && userId) {
     const history = await BrowsingHistory.find({ user: userId });
+    const lastViewed = history.sort((a, b) => new Date(b.viewedAt) - new Date(a.viewedAt))[0];
+    if (lastViewed) {
+      const viewedProduct = await Product.findById(lastViewed.product);
+      if (viewedProduct) {
+        targetCategory = viewedProduct.category;
+        targetTags = viewedProduct.tags || [];
+      }
+    }
     const wishlist = await Wishlist.findOne({ user: userId });
 
     if (wishlist && wishlist.products?.length > 0) {
@@ -28,7 +36,7 @@ export async function getRecommendationsForUser(userId, currentProductId = null)
 
   // Score products based on category match, tags overlap, and rating
   const scored = filtered.map(product => {
-    let score = (product.rating || 4) * 2;
+    let score = Number(product.rating || 0) * 2;
     if (targetCategory && product.category === targetCategory) score += 10;
     if (product.tags && targetTags.length > 0) {
       const overlap = product.tags.filter(t => targetTags.includes(t)).length;
@@ -38,5 +46,12 @@ export async function getRecommendationsForUser(userId, currentProductId = null)
   });
 
   scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, 8).map(s => s.product);
+  const available = [];
+  for (const candidate of scored) {
+    const inventory = await Inventory.findOne({ product: candidate.product._id });
+    const stock = inventory ? inventory.availableStock : Number(candidate.product.inventory || 0);
+    if (stock > 0) available.push(candidate.product);
+    if (available.length === 8) break;
+  }
+  return available;
 }

@@ -1,16 +1,16 @@
 // frontend/src/context/CartContext.jsx
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { cartService } from '../services/cartService.js';
 import { useAuth } from './AuthContext.jsx';
 
 const CartContext = createContext();
 
 export function CartProvider({ children }) {
-  const { user } = useAuth();
+  const { user, loading: userLoading } = useAuth();
   const [cart, setCart] = useState({ items: [] });
   const [loading, setLoading] = useState(false);
 
-  const fetchCart = async () => {
+  const fetchCart = useCallback(async () => {
     try {
       setLoading(true);
       const data = await cartService.getCart();
@@ -20,11 +20,24 @@ export function CartProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchCart();
-  }, [user?._id]);
+    let active = true;
+    const loadCart = async () => {
+      if (userLoading) return;
+      if (user) {
+        try {
+          await cartService.mergeGuestCart();
+        } catch (error) {
+          console.warn('Guest cart merge failed:', error.message);
+        }
+      }
+      if (active) await fetchCart();
+    };
+    loadCart();
+    return () => { active = false; };
+  }, [user?._id, userLoading, fetchCart]);
 
   const addItem = async (productId, quantity = 1, variant = null) => {
     const updated = await cartService.addItem(productId, quantity, variant);
@@ -51,11 +64,11 @@ export function CartProvider({ children }) {
 
   // Group items by Seller for Multi-Vendor display
   const itemsBySeller = items.reduce((acc, item) => {
-    const sId = item.seller || 'seller_1';
+    const sId = item.seller || 'unassigned';
     if (!acc[sId]) {
       acc[sId] = {
         sellerId: sId,
-        sellerName: item.sellerName || `Vendor ${sId}`,
+        sellerName: item.sellerName || (sId === 'unassigned' ? 'Seller details unavailable' : 'Seller'),
         items: [],
         subtotal: 0,
       };

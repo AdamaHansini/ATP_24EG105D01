@@ -7,9 +7,9 @@ export async function getUserNotifications(userId) {
   return notifications || [];
 }
 
-export async function markNotificationAsRead(notificationId) {
-  return await Notification.findByIdAndUpdate(
-    notificationId,
+export async function markNotificationAsRead(notificationId, userId) {
+  return await Notification.findOneAndUpdate(
+    { _id: notificationId, user: userId },
     { $set: { isRead: true } },
     { new: true }
   );

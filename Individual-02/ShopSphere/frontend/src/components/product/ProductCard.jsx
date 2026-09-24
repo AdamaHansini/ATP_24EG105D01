@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { useCart } from '../../context/CartContext.jsx';
 import { useWishlist } from '../../context/WishlistContext.jsx';
-import { Heart, Star, ShoppingBag, Check, Store } from 'lucide-react';
+import { Heart, Star, ShoppingBag, Check, Store, Package } from 'lucide-react';
 import Badge from '../ui/Badge.jsx';
 
 export default function ProductCard({ product, onSelectProduct }) {
@@ -13,8 +13,7 @@ export default function ProductCard({ product, onSelectProduct }) {
   if (!product) return null;
 
   const wishlisted = isWishlisted(product._id);
-  const primaryImage =
-    product.images?.[0] || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&q=80';
+  const primaryImage = product.images?.[0];
 
   const handleWishlistToggle = async (e) => {
     e.stopPropagation();
@@ -37,7 +36,7 @@ export default function ProductCard({ product, onSelectProduct }) {
       ? Math.round(((product.discountPrice - product.price) / product.discountPrice) * 100)
       : null;
 
-  const stock = product.availableStock !== undefined ? product.availableStock : (product.inventory || 20);
+  const stock = product.availableStock !== undefined ? product.availableStock : (product.inventory ?? 0);
 
   return (
     <div
@@ -71,12 +70,19 @@ export default function ProductCard({ product, onSelectProduct }) {
 
       {/* Product Image */}
       <div className="relative aspect-square w-full bg-slate-50 overflow-hidden">
-        <img
-          src={primaryImage}
-          alt={product.name}
-          className="w-full h-full object-cover group-hover:scale-104 transition-transform duration-300"
-          loading="lazy"
-        />
+        {primaryImage ? (
+          <img
+            src={primaryImage}
+            alt={product.name}
+            className="w-full h-full object-cover group-hover:scale-104 transition-transform duration-300"
+            loading="lazy"
+          />
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-slate-300">
+            <Package className="w-10 h-10" />
+            <span className="text-xs">No image provided</span>
+          </div>
+        )}
       </div>
 
       {/* Product Info */}
@@ -87,10 +93,12 @@ export default function ProductCard({ product, onSelectProduct }) {
             <span className="font-bold uppercase tracking-wider text-slate-500">
               {product.brand || 'Brand'}
             </span>
-            <span className="flex items-center gap-1 truncate max-w-[120px] text-slate-400" title={product.storeName || 'Verified Store'}>
-              <Store className="w-3 h-3 flex-shrink-0" />
-              <span className="truncate">{product.storeName || 'Verified Store'}</span>
-            </span>
+            {product.storeName && (
+              <span className="flex items-center gap-1 truncate max-w-[120px] text-slate-400" title={product.storeName}>
+                <Store className="w-3 h-3 flex-shrink-0" />
+                <span className="truncate">{product.storeName}</span>
+              </span>
+            )}
           </div>
 
           {/* Title */}
@@ -99,17 +107,17 @@ export default function ProductCard({ product, onSelectProduct }) {
           </h3>
 
           {/* Rating & Review Count */}
-          <div className="flex items-center gap-1.5 mt-1.5">
-            <div className="flex items-center text-amber-500">
-              <Star className="w-3.5 h-3.5 fill-current" />
-              <span className="text-xs font-bold text-slate-800 ml-1">
-                {product.rating || '4.8'}
-              </span>
+          {Number(product.reviewCount) > 0 ? (
+            <div className="flex items-center gap-1.5 mt-1.5">
+              <div className="flex items-center text-amber-500">
+                <Star className="w-3.5 h-3.5 fill-current" />
+                <span className="text-xs font-bold text-slate-800 ml-1">
+                  {Number(product.rating).toFixed(1)}
+                </span>
+              </div>
+              <span className="text-xs text-slate-400">({product.reviewCount} reviews)</span>
             </div>
-            <span className="text-xs text-slate-400">
-              ({product.reviewCount || 24} reviews)
-            </span>
-          </div>
+          ) : <p className="text-xs text-slate-400 mt-1.5">No reviews yet</p>}
         </div>
 
         {/* Pricing, Stock Status & Add to Cart */}

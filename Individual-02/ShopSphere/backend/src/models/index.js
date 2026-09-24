@@ -45,9 +45,9 @@ export const Seller = getModel('Seller', {
   storeName: { type: String, required: true, trim: true },
   businessEmail: { type: String, trim: true, lowercase: true },
   phone: String,
-  status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'approved' },
+  status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
   taxId: String,
-  rating: { type: Number, default: 4.8 },
+  rating: { type: Number, default: 0 },
 });
 
 // 3. Store
@@ -57,8 +57,8 @@ export const Store = getModel('Store', {
   description: String,
   logo: String,
   banner: String,
-  rating: { type: Number, default: 4.8 },
-  status: { type: String, enum: ['active', 'inactive'], default: 'active' },
+  rating: { type: Number, default: 0 },
+  status: { type: String, enum: ['active', 'inactive', 'pending'], default: 'pending' },
 });
 
 // 4. Category
@@ -76,7 +76,7 @@ export const Product = getModel('Product', {
   description: String,
   shortDescription: String,
   brand: String,
-  category: String,
+  category: { type: String, required: true, trim: true },
   subcategory: String,
   tags: [String],
   keywords: [String],
@@ -90,7 +90,7 @@ export const Product = getModel('Product', {
   seller: { type: String, ref: 'Seller' },
   store: { type: String, ref: 'Store' },
   storeName: String,
-  rating: { type: Number, default: 4.5 },
+  rating: { type: Number, default: 0 },
   reviewCount: { type: Number, default: 0 },
   status: { type: String, enum: ['active', 'draft', 'archived'], default: 'active' },
   aiMetadata: {
@@ -156,15 +156,22 @@ export const Order = getModel('Order', {
   customer: { type: String, ref: 'User', required: true },
   items: [Schema.Types.Mixed],
   totalAmount: Number,
+  subtotalAmount: Number,
   discountAmount: { type: Number, default: 0 },
+  shippingFee: { type: Number, default: 0 },
+  taxAmount: { type: Number, default: 0 },
   couponApplied: String,
   paymentStatus: {
     type: String,
-    enum: ['pending', 'paid', 'failed', 'refunded'],
-    default: 'pending',
+    enum: ['PENDING', 'PAID', 'FAILED', 'REFUNDED'],
+    default: 'PENDING',
   },
+  paymentMethod: { type: String, enum: ['COD'] },
+  paidAt: Date,
+  transactionReference: { type: String, default: null },
   paymentDetails: Schema.Types.Mixed,
   shippingAddress: Schema.Types.Mixed,
+  cancellationReason: String,
   sellerOrders: [{ type: String, ref: 'SellerOrder' }],
   status: {
     type: String,
@@ -212,15 +219,13 @@ export const OrderItem = getModel('OrderItem', {
 
 // 13. Payment
 export const Payment = getModel('Payment', {
-  order: { type: String, ref: 'Order' },
-  user: { type: String, ref: 'User' },
-  amount: Number,
-  currency: { type: String, default: 'INR' },
-  status: String,
-  method: String,
-  razorpayOrderId: String,
-  razorpayPaymentId: String,
-  verifiedAt: Date,
+  order: { type: String, ref: 'Order', required: true },
+  user: { type: String, ref: 'User', required: true },
+  amount: { type: Number, min: 0, required: true },
+  paymentMethod: { type: String, enum: ['COD'] },
+  paymentStatus: { type: String, enum: ['PENDING', 'PAID', 'FAILED', 'REFUNDED'], default: 'PENDING' },
+  paidAt: Date,
+  transactionReference: { type: String, default: null },
 });
 
 // 14. Coupon
@@ -245,25 +250,25 @@ export const Review = getModel('Review', {
   rating: { type: Number, min: 1, max: 5 },
   comment: String,
   images: [String],
-  isVerifiedPurchase: { type: Boolean, default: true },
+  isVerifiedPurchase: { type: Boolean, default: false },
 });
 
 // 16. Return
 export const Return = getModel('Return', {
-  order: { type: String, ref: 'Order' },
+  order: { type: String, ref: 'Order', required: true },
   sellerOrder: { type: String, ref: 'SellerOrder' },
-  user: { type: String, ref: 'User' },
-  reason: String,
-  status: { type: String, default: 'Return Requested' },
-  amount: Number,
+  user: { type: String, ref: 'User', required: true },
+  reason: { type: String, required: true },
+  status: { type: String, enum: ['Return Requested', 'Approved', 'Rejected', 'Returned'], default: 'Return Requested' },
+  amount: { type: Number, min: 0 },
 });
 
 // 17. Refund
 export const Refund = getModel('Refund', {
-  order: { type: String, ref: 'Order' },
-  user: { type: String, ref: 'User' },
-  amount: Number,
-  status: { type: String, default: 'Refund Processing' },
+  order: { type: String, ref: 'Order', required: true },
+  user: { type: String, ref: 'User', required: true },
+  amount: { type: Number, min: 0, required: true },
+  status: { type: String, enum: ['Refund Processing', 'Refunded', 'Refund Failed'], default: 'Refund Processing' },
   transactionId: String,
 });
 
@@ -299,6 +304,7 @@ export const Dispute = getModel('Dispute', {
   status: { type: String, default: 'OPEN' },
   messages: [Schema.Types.Mixed],
   adminNotes: String,
+  returnRequest: { type: String, ref: 'Return' },
 });
 
 // 20. Notification
@@ -315,6 +321,10 @@ export const Notification = getModel('Notification', {
   metadata: {
     oldPrice: Number,
     newPrice: Number,
+    orderId: String,
+    status: String,
+    productName: String,
+    productImage: String,
   },
   isRead: { type: Boolean, default: false },
 });

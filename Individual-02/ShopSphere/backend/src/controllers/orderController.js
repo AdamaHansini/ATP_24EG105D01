@@ -1,30 +1,27 @@
 // backend/src/controllers/orderController.js
 import { processMultiVendorCheckout } from '../services/checkoutService.js';
-import { updateOrderStatus, cancelOrder } from '../services/orderService.js';
-import { Order, SellerOrder, Delivery } from '../models/index.js';
+import { updateOrderStatus, cancelOrder, requestOrderReturn } from '../services/orderService.js';
+import { Order, SellerOrder, Delivery, Seller, Store } from '../models/index.js';
 
 export async function checkout(req, res, next) {
   try {
     // Customer identity comes from the verified JWT — never from the request body
     const customerId = req.user._id;
     const {
-      cartItems,
       shippingAddress,
-      paymentDetails,
       couponCode,
-      simulateSellerFailure,
+      paymentMethod,
     } = req.body;
+
+    if (paymentMethod !== 'COD') {
+      return res.status(400).json({ success: false, message: 'Cash on Delivery (COD) is the only supported payment method.', errorCode: 'INVALID_PAYMENT_METHOD' });
+    }
 
     const result = await processMultiVendorCheckout({
       customerId,
-      cartItems,
       shippingAddress,
-      paymentDetails: paymentDetails || {
-        status: 'pending',
-        method: 'Pay on Delivery',
-      },
       couponCode,
-      simulateSellerFailure: Boolean(simulateSellerFailure),
+      paymentMethod,
     });
 
     res.status(201).json({
@@ -48,9 +45,10 @@ export async function getOrders(req, res, next) {
     } else if (role === 'seller') {
       // Return seller sub-orders for this seller's user ID
       // The seller document has seller.user = userId
-      const { Seller } = await import('../models/index.js');
       const sellerDoc = await Seller.findOne({ user: userId });
       if (sellerDoc) {
+        const store = await Store.findOne({ seller: sellerDoc._id });
+        if (!store || store.status !== 'active') return res.json({ success: true, data: { orders: [] } });
         const sellerOrders = await SellerOrder.find({ seller: sellerDoc._id }).sort({ createdAt: -1 });
         return res.json({ success: true, data: { orders: sellerOrders } });
       }
@@ -87,19 +85,30 @@ export async function getOrderById(req, res, next) {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
 
-    // Customers may only see their own orders
     if (req.user.role === 'customer' && String(order.customer) !== String(req.user._id)) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied. You can only view your own orders.',
-        errorCode: 'FORBIDDEN_ORDER_ACCESS',
-      });
+      return res.status(403).json({ success: false, message: 'Access denied to this order', errorCode: 'FORBIDDEN_ORDER_ACCESS' });
+    }
+    if (req.user.role === 'delivery') {
+      const assigned = await Delivery.find({ parentOrder: order._id, assignedTo: req.user._id });
+      if (!assigned.length) return res.status(403).json({ success: false, message: 'Access denied to this order' });
+      return res.json({ success: true, data: { order, deliveries: toPlain(assigned) } });
     }
 
-    const sellerOrders = await SellerOrder.find({ parentOrder: order._id });
-    const deliveries = await Delivery.find({
-      sellerOrder: { $in: sellerOrders.map((so) => so._id) },
-    });
+    let sellerOrders = await SellerOrder.find({ parentOrder: order._id });
+    if (req.user.role === 'seller') {
+      const seller = await Seller.findOne({ user: req.user._id });
+      if (!seller) return res.status(403).json({ success: false, message: 'Seller account not found' });
+      const store = await Store.findOne({ seller: seller._id });
+      if (!store || store.status !== 'active') return res.status(403).json({ success: false, message: 'Seller account is awaiting approval' });
+      sellerOrders = sellerOrders.filter((sellerOrder) => String(sellerOrder.seller) === String(seller._id));
+      if (!sellerOrders.length) return res.status(403).json({ success: false, message: 'Access denied to this order' });
+    }
+    let deliveries = await Delivery.find({ sellerOrder: { $in: sellerOrders.map((so) => so._id) } });
+    if (req.user.role === 'delivery') {
+      deliveries = deliveries.filter((delivery) => String(delivery.assignedTo) === String(req.user._id));
+      if (!deliveries.length) return res.status(403).json({ success: false, message: 'Access denied to this order' });
+      sellerOrders = sellerOrders.filter((sellerOrder) => deliveries.some((delivery) => String(delivery.sellerOrder) === String(sellerOrder._id)));
+    }
 
     res.json({
       success: true,
@@ -117,7 +126,24 @@ export async function getOrderById(req, res, next) {
 export async function updateStatus(req, res, next) {
   try {
     const { status, isSellerOrder } = req.body;
+    if (isSellerOrder) {
+      return res.status(400).json({ success: false, message: 'Seller orders must be updated through the seller workflow.' });
+    }
+    if (!['PENDING', 'CONFIRMED', 'PROCESSING', 'PACKED', 'SHIPPED', 'OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED', 'RETURN_REQUESTED', 'RETURNED', 'REFUNDED'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Invalid order status' });
+    }
     const updated = await updateOrderStatus(req.params.id, status, isSellerOrder);
+    if (!updated) return res.status(404).json({ success: false, message: 'Order not found' });
+    const order = await Order.findById(updated._id);
+    if (order) {
+      await Notification.create({
+        user: order.customer,
+        type: 'ORDER_STATUS',
+        title: 'Order status updated',
+        message: `Order ${order.orderNumber} is now ${status.toLowerCase().replaceAll('_', ' ')}.`,
+        metadata: { orderId: String(order._id), status },
+      });
+    }
     res.json({ success: true, message: `Status updated to ${status}`, data: { order: updated } });
   } catch (err) {
     next(err);
@@ -140,8 +166,29 @@ export async function cancel(req, res, next) {
       });
     }
 
+    if (String(order.paymentStatus).toUpperCase() === 'PAID') {
+      return res.status(409).json({
+        success: false,
+        message: 'This paid order cannot be cancelled through self-service. Contact support to request a refund.',
+        errorCode: 'PAID_ORDER_SUPPORT_REQUIRED',
+      });
+    }
+
     const result = await cancelOrder(req.params.id, reason);
     res.json({ success: true, message: result.message });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function requestReturn(req, res, next) {
+  try {
+    const createdReturn = await requestOrderReturn({
+      orderId: req.params.id,
+      userId: req.user._id,
+      reason: req.body.reason,
+    });
+    res.status(201).json({ success: true, message: 'Return request submitted', data: { returnRequest: createdReturn } });
   } catch (err) {
     next(err);
   }

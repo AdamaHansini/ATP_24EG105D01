@@ -2,7 +2,7 @@
 import { api } from './api.js';
 
 export const orderService = {
-  // SIGNATURE FEATURE 2: Multi-vendor checkout with atomic transaction rollback
+  // Multi-vendor checkout is committed atomically by the backend.
   checkout: async (checkoutPayload) => {
     const res = await api.post('/orders/checkout', checkoutPayload);
     return res.data;
@@ -28,9 +28,8 @@ export const orderService = {
     return res;
   },
 
-  // Admin-only rollback simulation (requires admin JWT)
-  simulateRollbackTest: async (simulateFailure = true) => {
-    const res = await api.post('/admin/simulate-rollback', { simulateFailure });
-    return res;
+  requestReturn: async (orderId, reason) => {
+    const res = await api.post(`/orders/${orderId}/return`, { reason });
+    return res.data?.returnRequest;
   },
 };

@@ -1,17 +1,19 @@
 // backend/src/routes/orderRoutes.js
 import express from 'express';
-import { checkout, getOrders, getOrderById, updateStatus, cancel } from '../controllers/orderController.js';
+import { checkout, getOrders, getOrderById, updateStatus, cancel, requestReturn } from '../controllers/orderController.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
+import { requireRoles } from '../middleware/roleMiddleware.js';
 
 const router = express.Router();
 
 router.use(authenticateToken);
 
-// MANDATORY SIGNATURE FEATURE: Multi-vendor checkout with atomic rollback
-router.post('/checkout', checkout);
-router.get('/', getOrders);
-router.get('/:id', getOrderById);
-router.patch('/:id/status', updateStatus);
-router.post('/:id/cancel', cancel);
+// Multi-vendor checkout reserves stock and writes orders in one MongoDB transaction.
+router.post('/checkout', requireRoles('customer'), checkout);
+router.get('/', requireRoles('customer', 'seller', 'admin'), getOrders);
+router.get('/:id', requireRoles('customer', 'admin'), getOrderById);
+router.patch('/:id/status', requireRoles('admin'), updateStatus);
+router.post('/:id/cancel', requireRoles('customer', 'admin'), cancel);
+router.post('/:id/return', requireRoles('customer'), requestReturn);
 
 export default router;

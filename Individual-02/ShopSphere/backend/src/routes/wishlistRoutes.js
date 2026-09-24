@@ -2,10 +2,11 @@
 import express from 'express';
 import { getWishlist, addWishlist, removeWishlist, moveToCart } from '../controllers/wishlistController.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
+import { requireRoles } from '../middleware/roleMiddleware.js';
 
 const router = express.Router();
 
-router.use(authenticateToken);
+router.use(authenticateToken, requireRoles('customer'));
 
 router.get('/', getWishlist);
 router.post('/', addWishlist);

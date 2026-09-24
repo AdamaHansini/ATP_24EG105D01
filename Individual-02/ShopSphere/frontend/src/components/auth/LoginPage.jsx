@@ -11,7 +11,6 @@ const STAFF_ROLES = [
   {
     role: 'admin',
     label: 'Admin',
-    email: 'admin@gmail.com',
     icon: Shield,
     color: 'text-violet-600',
     bg: 'bg-violet-50',
@@ -21,7 +20,6 @@ const STAFF_ROLES = [
   {
     role: 'support',
     label: 'Support',
-    email: 'support@gmail.com',
     icon: HeadphonesIcon,
     color: 'text-sky-600',
     bg: 'bg-sky-50',
@@ -31,7 +29,6 @@ const STAFF_ROLES = [
   {
     role: 'delivery',
     label: 'Delivery',
-    email: 'delivery@gmail.com',
     icon: Truck,
     color: 'text-amber-600',
     bg: 'bg-amber-50',
@@ -54,6 +51,7 @@ export default function LoginPage() {
 
   // Staff login fields
   const [selectedStaff, setSelectedStaff] = useState(STAFF_ROLES[0]);
+  const [staffEmail, setStaffEmail] = useState('');
   const [staffPassword, setStaffPassword] = useState('');
 
   const [error, setError] = useState('');
@@ -93,7 +91,7 @@ export default function LoginPage() {
     try {
       setSubmitting(true);
       // Do not send a role for customer/seller login — backend derives it from the DB
-      const res = await login(email, password);
+      const res = await login(email, password, role);
       setSuccessMsg('Authentication successful! Redirecting...');
       const target = getDestination(res?.role || res?.user?.role);
       setTimeout(() => navigate(target, { replace: true }), 400);
@@ -115,7 +113,7 @@ export default function LoginPage() {
     try {
       setSubmitting(true);
       // Send the staff email and expected role — backend validates both against MongoDB
-      const res = await login(selectedStaff.email, staffPassword, selectedStaff.role);
+      const res = await login(staffEmail, staffPassword, selectedStaff.role);
       setSuccessMsg('Authentication successful! Redirecting...');
       const target = getDestination(res?.role || res?.user?.role);
       setTimeout(() => navigate(target, { replace: true }), 400);
@@ -250,18 +248,19 @@ export default function LoginPage() {
                 })}
               </div>
             </div>
+            <label className="block text-xs font-bold text-slate-700 mt-4">
+              Staff email
+              <input
+                type="email"
+                required
+                value={staffEmail}
+                onChange={(event) => setStaffEmail(event.target.value)}
+                className="mt-1 w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900"
+                autoComplete="username"
+              />
+            </label>
 
-            {/* Pre-filled email display (read-only) */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5">Email address</label>
-              <div className="relative">
-                <div className="w-full text-xs bg-slate-100 border border-slate-200 rounded-xl pl-9 pr-3 py-2.5 text-slate-500 select-none">
-                  {selectedStaff.email}
-                </div>
-                <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-              </div>
-              <p className="text-xs text-slate-400 mt-1 ml-1">{selectedStaff.description}</p>
-            </div>
+            <p className="text-xs text-slate-400">{selectedStaff.description}</p>
 
             {/* Password */}
             <div>
@@ -322,6 +321,25 @@ export default function LoginPage() {
             {/* Customer/Seller Login Form */}
             {tab === 'login' ? (
               <form className="mt-2 space-y-4" onSubmit={handleCustomerLogin}>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Sign in as</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {['customer', 'seller'].map((accountRole) => (
+                      <button
+                        key={accountRole}
+                        type="button"
+                        onClick={() => setRole(accountRole)}
+                        className={`p-2.5 rounded-xl border text-xs font-semibold capitalize transition-all ${
+                          role === accountRole
+                            ? 'border-indigo-600 bg-indigo-50/70 text-indigo-700 font-bold'
+                            : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        {accountRole}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1.5">Email address</label>
                   <div className="relative">

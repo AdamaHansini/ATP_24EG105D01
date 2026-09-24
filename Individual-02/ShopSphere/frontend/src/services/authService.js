@@ -28,12 +28,7 @@ export const authService = {
   },
 
   logout: async () => {
-    localStorage.removeItem('shopsphere_token');
-    try {
-      await api.post('/auth/logout', {});
-    } catch (e) {
-      // Ignore logout API errors — token is already cleared locally
-    }
+    await api.post('/auth/logout', {});
   },
 
   getMe: async () => {

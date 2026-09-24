@@ -2,32 +2,47 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { orderService } from '../../services/orderService.js';
-import {
-  User,
-  Package,
-  MapPin,
-  Clock,
-  CheckCircle2,
-  RefreshCw,
-  ShoppingBag,
-  Store,
-  ChevronRight,
-} from 'lucide-react';
+import { Package, RefreshCw, Store } from 'lucide-react';
 
 export default function AccountView({ onContinueShopping }) {
   const { user } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('orders');
+  const [actionError, setActionError] = useState('');
+  const [returnReasons, setReturnReasons] = useState({});
 
   useEffect(() => {
     setLoading(true);
     orderService
       .getOrders()
       .then((res) => setOrders(res?.orders || []))
-      .catch(() => setOrders([]))
+      .catch((error) => {
+        console.warn('Could not load order history:', error);
+        setActionError(error.message || 'Could not load order history.');
+      })
       .finally(() => setLoading(false));
   }, []);
+
+  const handleCancel = async (order) => {
+    setActionError('');
+    try {
+      await orderService.cancelOrder(order._id, 'Customer request');
+      setOrders((current) => current.map((entry) => entry._id === order._id ? { ...entry, status: 'CANCELLED' } : entry));
+    } catch (error) {
+      setActionError(error.message || 'The order could not be cancelled.');
+    }
+  };
+
+  const handleReturnRequest = async (order) => {
+    setActionError('');
+    try {
+      await orderService.requestReturn(order._id, returnReasons[order._id] || '');
+      setOrders((current) => current.map((entry) => entry._id === order._id ? { ...entry, status: 'RETURN_REQUESTED' } : entry));
+    } catch (error) {
+      setActionError(error.message || 'The return request could not be submitted.');
+    }
+  };
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6">
@@ -84,6 +99,7 @@ export default function AccountView({ onContinueShopping }) {
       {/* Tab: Orders */}
       {activeTab === 'orders' && (
         <div className="space-y-4">
+          {actionError && <div role="alert" className="p-3 rounded-lg bg-rose-50 text-rose-700 border border-rose-200">{actionError}</div>}
           {loading ? (
             <div className="py-16 text-center text-slate-400">
               <RefreshCw className="w-8 h-8 animate-spin mx-auto text-indigo-600 mb-2" />
@@ -171,6 +187,27 @@ export default function AccountView({ onContinueShopping }) {
                     ))}
                   </div>
                 )}
+                {o.paymentMethod === 'COD' && <div className="text-slate-600">Payment: <strong>Cash on Delivery</strong> · Payment Status: <strong>{String(o.paymentStatus || 'PENDING').toUpperCase()}</strong></div>}
+                {['PENDING', 'CONFIRMED', 'PROCESSING', 'PACKED'].includes(o.status) && String(o.paymentStatus || '').toUpperCase() !== 'PAID' && (
+                  <div className="flex justify-end border-t border-slate-100 pt-3">
+                    <button onClick={() => handleCancel(o)} className="px-3 py-2 text-rose-700 border border-rose-200 rounded-lg hover:bg-rose-50 font-semibold">
+                      Cancel order
+                    </button>
+                  </div>
+                )}
+                {o.status === 'DELIVERED' && (
+                  <div className="flex flex-col sm:flex-row gap-2 border-t border-slate-100 pt-3">
+                    <input
+                      value={returnReasons[o._id] || ''}
+                      onChange={(event) => setReturnReasons((current) => ({ ...current, [o._id]: event.target.value }))}
+                      placeholder="Reason for return"
+                      className="flex-1 px-3 py-2 border border-slate-200 rounded-lg"
+                    />
+                    <button onClick={() => handleReturnRequest(o)} className="px-3 py-2 text-indigo-700 border border-indigo-200 rounded-lg hover:bg-indigo-50 font-semibold">
+                      Request return
+                    </button>
+                  </div>
+                )}
               </div>
             ))
           )}
@@ -183,14 +220,15 @@ export default function AccountView({ onContinueShopping }) {
           <h3 className="font-bold text-slate-900">Saved Shipping Addresses</h3>
           <div className="p-4 bg-slate-50 rounded-xl border border-slate-200/80 max-w-md space-y-1">
             <div className="flex items-center justify-between">
-              <span className="font-bold text-slate-900">{user?.name || 'Sophia Chen'}</span>
-              <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-[10px] font-bold">
-                Default
-              </span>
+              <span className="font-bold text-slate-900">{user?.name || 'Account holder'}</span>
             </div>
-            <p className="text-slate-600">742 Evergreen Terrace</p>
-            <p className="text-slate-600">Springfield, OR 97477, USA</p>
-            <p className="text-slate-500 pt-1">Phone: +1 555-0122</p>
+            {user?.addresses?.length ? user.addresses.map((address, index) => (
+              <div key={index} className="pt-2">
+                <p className="text-slate-600">{address.street}</p>
+                <p className="text-slate-600">{[address.city, address.state, address.postalCode, address.country].filter(Boolean).join(', ')}</p>
+                {address.phone && <p className="text-slate-500 pt-1">Phone: {address.phone}</p>}
+              </div>
+            )) : <p className="text-slate-500">No saved addresses. Add one during checkout.</p>}
           </div>
         </div>
       )}

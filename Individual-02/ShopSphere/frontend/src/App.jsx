@@ -14,12 +14,12 @@ import ProtectedRoute from './components/common/ProtectedRoute.jsx';
 import LoginPage from './components/auth/LoginPage.jsx';
 
 import AccountView from './components/account/AccountView.jsx';
+import OrderDetails from './components/account/OrderDetails.jsx';
 import ProductCatalogView from './components/product/ProductCatalogView.jsx';
 import MultiVendorCartView from './components/cart/MultiVendorCartView.jsx';
 import CheckoutModal from './components/checkout/CheckoutModal.jsx';
 import WishlistView from './components/wishlist/WishlistView.jsx';
 import AITaxonomyStudio from './components/ai/AITaxonomyStudio.jsx';
-import RollbackLab from './components/admin/RollbackLab.jsx';
 import SellerDashboard from './components/seller/SellerDashboard.jsx';
 import AdminDashboard from './components/admin/AdminDashboard.jsx';
 import SupportDashboard from './components/support/SupportDashboard.jsx';
@@ -38,6 +38,7 @@ function MainApp() {
   const [catalogLoading, setCatalogLoading] = useState(true);
 
   const navigate = useNavigate();
+  const { loading: authLoading } = useAuth();
 
   const loadCatalog = async () => {
     try {
@@ -61,8 +62,9 @@ function MainApp() {
   };
 
   useEffect(() => {
+    if (authLoading) return;
     loadCatalog();
-  }, [selectedCategory, searchQuery, sortOption]);
+  }, [selectedCategory, searchQuery, sortOption, authLoading]);
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-800 antialiased selection:bg-indigo-100 selection:text-indigo-900">
@@ -155,6 +157,15 @@ function MainApp() {
           />
 
           <Route
+            path="/orders/:id"
+            element={
+              <ProtectedRoute allowedRoles={['customer']}>
+                <OrderDetails />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
             path="/orders"
             element={
               <ProtectedRoute allowedRoles={['customer', 'admin', 'seller']}>
@@ -213,7 +224,7 @@ function MainApp() {
             path="/admin"
             element={
               <ProtectedRoute allowedRoles={['admin']}>
-                <AdminDashboard onOpenRollbackLab={() => navigate('/admin/rollback-lab')} />
+                <AdminDashboard />
               </ProtectedRoute>
             }
           />
@@ -222,16 +233,7 @@ function MainApp() {
             path="/admin/dashboard"
             element={
               <ProtectedRoute allowedRoles={['admin']}>
-                <AdminDashboard onOpenRollbackLab={() => navigate('/admin/rollback-lab')} />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/admin/rollback-lab"
-            element={
-              <ProtectedRoute allowedRoles={['admin']}>
-                <RollbackLab />
+                <AdminDashboard />
               </ProtectedRoute>
             }
           />
@@ -303,6 +305,7 @@ function MainApp() {
         else if (view === 'admin') navigate('/admin');
         else if (view === 'support') navigate('/support');
         else if (view === 'delivery') navigate('/delivery');
+        else if (view === 'ai-studio') navigate('/seller/ai-studio');
         else navigate('/');
       }} />
     </div>

@@ -77,6 +77,19 @@ export default function DeliveryDashboard() {
     }
   };
 
+  const handleCollectPayment = async () => {
+    if (!activeDelivery) return;
+    setUpdating(true);
+    try {
+      await deliveryService.collectCODPayment(activeDelivery._id);
+      await loadDeliveries();
+    } catch (error) {
+      alert(`Payment collection failed: ${error.message}`);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="py-24 text-center text-slate-500">
@@ -170,6 +183,18 @@ export default function DeliveryDashboard() {
               </div>
 
               {/* Status Action Buttons */}
+              {activeDelivery.paymentMethod === 'COD' && (
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
+                  <h4 className="font-bold text-amber-900">Payment Collection</h4>
+                  <p className="text-amber-800">Amount Due: ₹{Number(activeDelivery.orderTotal || 0).toLocaleString()}</p>
+                  <p className="text-amber-800">Payment Status: {activeDelivery.paymentStatus}</p>
+                  {activeDelivery.status === 'Out for Delivery' && activeDelivery.paymentStatus !== 'PAID' && (
+                    <button disabled={updating} onClick={handleCollectPayment} className="px-3 py-2 rounded-lg bg-amber-700 text-white font-semibold disabled:opacity-50">
+                      Mark Payment Collected
+                    </button>
+                  )}
+                </div>
+              )}
               <div className="pt-3 border-t border-slate-100 space-y-2">
                 <span className="font-bold text-slate-700 block">Advance Delivery Status:</span>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -199,7 +224,7 @@ export default function DeliveryDashboard() {
                   </button>
                   <button
                     type="button"
-                    disabled={updating || activeDelivery.status === 'Delivered'}
+                    disabled={updating || activeDelivery.status === 'Delivered' || (activeDelivery.paymentMethod === 'COD' && activeDelivery.paymentStatus !== 'PAID')}
                     onClick={() => handleUpdateStatus('Delivered')}
                     className="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold disabled:opacity-50"
                   >

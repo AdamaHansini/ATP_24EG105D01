@@ -2,14 +2,8 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { User, Seller, Store } from '../models/index.js';
-
-function getJwtSecret() {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    throw new Error('JWT_SECRET environment variable is not set.');
-  }
-  return secret;
-}
+import { toPlain } from '../utils/toPlain.js';
+import { getJwtSecret } from '../config/jwt.js';
 
 // Roles that cannot be created through public registration
 const PROTECTED_ROLES = ['admin', 'support', 'delivery'];
@@ -36,10 +30,10 @@ export async function register(req, res, next) {
   try {
     const { name, email, password, role = 'customer', storeName } = req.body;
 
-    if (!name || !email || !password) {
+    if (typeof name !== 'string' || !name.trim() || typeof email !== 'string' || !email.trim() || typeof password !== 'string' || password.length < 8 || password.length > 128) {
       return res.status(400).json({
         success: false,
-        message: 'Name, email, and password are required',
+        message: 'Name, email, and a password between 8 and 128 characters are required',
         errorCode: 'VALIDATION_ERROR',
       });
     }
@@ -63,6 +57,9 @@ export async function register(req, res, next) {
     }
 
     const normalizedEmail = email.toLowerCase().trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      return res.status(400).json({ success: false, message: 'Enter a valid email address', errorCode: 'INVALID_EMAIL' });
+    }
 
     const existingUser = await User.findOne({ email: normalizedEmail });
     if (existingUser) {
@@ -74,35 +71,40 @@ export async function register(req, res, next) {
     }
 
     const hashedPassword = await bcrypt.hash(password, 12);
-    const user = await User.create({
-      name,
-      email: normalizedEmail,
-      password: hashedPassword,
-      role,
-      addresses: [],
-      isSuspended: false,
-    });
+    const storeLabel = storeName || `${name}'s Store`;
+    const session = await User.startSession();
+    let user;
+    let seller;
+    let store;
+    try {
+      await session.withTransaction(async () => {
+        [user] = await User.create([{
+          name: name.trim(),
+          email: normalizedEmail,
+          password: hashedPassword,
+          role,
+          addresses: [],
+          isSuspended: false,
+        }], { session });
 
-    if (role === 'seller') {
-      const seller = await Seller.create({
-        user: user._id,
-        storeName: storeName || `${name}'s Store`,
-        businessEmail: normalizedEmail,
-        status: 'approved',
+        if (role === 'seller') {
+          [seller] = await Seller.create([{
+            user: user._id,
+            storeName: storeLabel,
+            businessEmail: normalizedEmail,
+            status: 'pending',
+          }], { session });
+          [store] = await Store.create([{ seller: seller._id, name: storeLabel, status: 'pending' }], { session });
+        }
       });
-      await Store.create({
-        seller: seller._id,
-        name: storeName || `${name}'s Store`,
-        description: 'Quality goods directly from authorized seller',
-        rating: 4.9,
-        status: 'active',
-      });
+    } finally {
+      await session.endSession();
     }
 
     const token = generateToken(user);
-    res.cookie('token', token, { httpOnly: true, maxAge: 7 * 24 * 60 * 60 * 1000 });
-
     const userObj = toPlainUser(user);
+    if (seller) userObj.seller = toPlain(seller);
+    if (store) userObj.store = toPlain(store);
 
     res.status(201).json({
       success: true,
@@ -118,7 +120,7 @@ export async function login(req, res, next) {
   try {
     const { email, password, role: requestedRole } = req.body;
 
-    if (!email || !password) {
+    if (typeof email !== 'string' || !email.trim() || typeof password !== 'string' || !password) {
       return res.status(400).json({
         success: false,
         message: 'Email and password are required',
@@ -164,17 +166,15 @@ export async function login(req, res, next) {
     }
 
     const token = generateToken(user);
-    res.cookie('token', token, { httpOnly: true, maxAge: 7 * 24 * 60 * 60 * 1000 });
-
     const userObj = toPlainUser(user);
 
     // Attach store details if seller
     if (user.role === 'seller') {
       const seller = await Seller.findOne({ user: user._id });
       if (seller) {
-        userObj.seller = seller;
+        userObj.seller = toPlain(seller);
         const store = await Store.findOne({ seller: seller._id });
-        if (store) userObj.store = store;
+        if (store) userObj.store = toPlain(store);
       }
     }
 
@@ -199,9 +199,9 @@ export async function getMe(req, res, next) {
     if (user.role === 'seller') {
       const seller = await Seller.findOne({ user: user._id });
       if (seller) {
-        userObj.seller = seller;
+        userObj.seller = toPlain(seller);
         const store = await Store.findOne({ seller: seller._id });
-        if (store) userObj.store = store;
+        if (store) userObj.store = toPlain(store);
       }
     }
 
@@ -212,6 +212,5 @@ export async function getMe(req, res, next) {
 }
 
 export async function logout(req, res) {
-  res.clearCookie('token');
   res.json({ success: true, message: 'Logged out successfully' });
 }

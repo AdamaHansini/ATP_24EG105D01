@@ -59,13 +59,11 @@ export async function sendPriceDropNotification(productId, oldPrice, newPrice) {
             to: userDoc.email,
             subject: `Price Drop Alert: ${productName} is now ₹${numericNewPrice.toLocaleString()}!`,
             text: `Great news! An item on your ShopSphere wishlist (${productName}) just dropped in price from ₹${numericOldPrice.toLocaleString()} to ₹${numericNewPrice.toLocaleString()}. Visit ShopSphere to purchase now.`,
-          }).catch(() => {
-            // Email transport errors do not disrupt marketplace operations
-          });
+          }).catch((error) => console.warn('[notifications] Price drop email failed:', error.name, error.code));
         }
-      }).catch(() => {});
+      }).catch((error) => console.warn('[notifications] Could not load price drop recipient:', error.name, error.code));
     } catch (err) {
-      // Individual notification creation failure logged silently
+      console.error('[notifications] Could not create price drop notification:', err.name, err.code);
     }
   }
 

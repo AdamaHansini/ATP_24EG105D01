@@ -17,6 +17,7 @@ import {
   MessageSquare,
   Sparkles,
   ChevronRight,
+  Package,
 } from 'lucide-react';
 import Badge from '../ui/Badge.jsx';
 import Button from '../ui/Button.jsx';
@@ -51,26 +52,26 @@ export default function ProductDetailModal({
     setAdded(false);
 
     // Record view in browsing history
-    productService.recordView(product._id).catch(() => {});
+    productService.recordView(product._id).catch((error) => console.warn('Could not record product view:', error));
 
     // Fetch verified reviews
     setLoadingReviews(true);
     productService
       .getReviews(product._id)
       .then((res) => setReviews(res || []))
-      .catch(() => setReviews([]))
+      .catch((error) => {
+        console.warn('Could not load product reviews:', error);
+        setReviews([]);
+      })
       .finally(() => setLoadingReviews(false));
   }, [product?._id]);
 
   if (!product) return null;
 
   const wishlisted = isWishlisted(product._id);
-  const images =
-    product.images?.length > 0
-      ? product.images
-      : ['https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&q=80'];
+  const images = (product.images || []).filter(Boolean);
 
-  const stock = product.availableStock !== undefined ? product.availableStock : (product.inventory || 20);
+  const stock = product.availableStock !== undefined ? product.availableStock : (product.inventory ?? 0);
 
   const discountAmount =
     product.discountPrice && product.discountPrice > product.price
@@ -145,11 +146,14 @@ export default function ProductDetailModal({
             {/* Gallery Column */}
             <div>
               <div className="aspect-square bg-slate-50 rounded-2xl overflow-hidden mb-3 border border-slate-200/80">
-                <img
-                  src={images[selectedImage] || images[0]}
-                  alt={product.name}
-                  className="w-full h-full object-cover"
-                />
+                {images[selectedImage] ? (
+                  <img src={images[selectedImage]} alt={product.name} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-slate-300">
+                    <Package className="w-14 h-14" />
+                    <span className="text-xs">No image provided</span>
+                  </div>
+                )}
               </div>
               {images.length > 1 && (
                 <div className="flex gap-2 overflow-x-auto pb-1">
@@ -180,7 +184,7 @@ export default function ProductDetailModal({
                   </span>
                   <span className="flex items-center gap-1.5 text-slate-500 font-semibold bg-slate-100 px-2.5 py-1 rounded-lg">
                     <Store className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>{product.storeName || 'Verified Partner Store'}</span>
+                    <span>{product.storeName || 'Seller'}</span>
                   </span>
                 </div>
 
@@ -190,16 +194,20 @@ export default function ProductDetailModal({
 
                 {/* Rating & Review */}
                 <div className="flex items-center gap-3 mt-2.5">
-                  <div className="flex items-center text-amber-500">
-                    <Star className="w-4 h-4 fill-current" />
-                    <span className="text-sm font-bold text-slate-800 ml-1.5">
-                      {product.rating || '4.8'}
-                    </span>
-                  </div>
-                  <span className="text-xs text-slate-400">&bull;</span>
-                  <span className="text-xs text-slate-600 font-medium">
-                    {product.reviewCount || 24} customer reviews
-                  </span>
+                  {Number(product.reviewCount) > 0 ? (
+                    <>
+                      <div className="flex items-center text-amber-500">
+                        <Star className="w-4 h-4 fill-current" />
+                        <span className="text-sm font-bold text-slate-800 ml-1.5">
+                          {Number(product.rating).toFixed(1)}
+                        </span>
+                      </div>
+                      <span className="text-xs text-slate-400">&bull;</span>
+                      <span className="text-xs text-slate-600 font-medium">
+                        {product.reviewCount} customer reviews
+                      </span>
+                    </>
+                  ) : <span className="text-xs text-slate-500">No reviews yet</span>}
                   <span className="text-xs text-slate-400">&bull;</span>
                   <Badge variant={stock > 0 ? 'success' : 'danger'} size="sm">
                     {stock > 0 ? `In Stock (${stock} available)` : 'Out of Stock'}
@@ -356,7 +364,7 @@ export default function ProductDetailModal({
             )}
           </div>
 
-          {/* Verified Customer Reviews Section */}
+          {/* Customer Reviews Section */}
           <div className="py-6 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
@@ -415,9 +423,9 @@ export default function ProductDetailModal({
                 {reviews.map((r, idx) => (
                   <div key={r._id || idx} className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-100 text-xs">
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-slate-800">{r.userName || 'Verified Buyer'}</span>
+                      <span className="font-bold text-slate-800">{r.userName || 'ShopSphere customer'}</span>
                       <div className="flex items-center text-amber-500">
-                        {Array.from({ length: r.rating || 5 }).map((_, i) => (
+                        {Array.from({ length: Math.max(0, Math.min(5, Math.round(Number(r.rating) || 0))) }).map((_, i) => (
                           <Star key={i} className="w-3.5 h-3.5 fill-current" />
                         ))}
                       </div>

@@ -7,8 +7,11 @@ export function getAiClient() {
   if (!clientInstance) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      console.warn('GEMINI_API_KEY is not set. AI services will use intelligent domain heuristic fallback.');
-      return null;
+      const error = new Error('AI features are unavailable until GEMINI_API_KEY is configured in backend/.env.');
+      error.statusCode = 503;
+      error.errorCode = 'AI_PROVIDER_UNAVAILABLE';
+      error.expose = true;
+      throw error;
     }
     clientInstance = new GoogleGenAI({
       apiKey: apiKey,

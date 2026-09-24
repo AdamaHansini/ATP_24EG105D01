@@ -15,9 +15,9 @@ const router = express.Router();
 // All support endpoints require authentication
 router.use(authenticateToken);
 
-router.get('/tickets', getTickets);
+router.get('/tickets', requireRoles('customer', 'seller', 'support', 'admin'), getTickets);
 router.post('/tickets', createTicket);
-router.get('/tickets/:id', getTicketById);
+router.get('/tickets/:id', requireRoles('customer', 'seller', 'support', 'admin'), getTicketById);
 router.post('/tickets/:id/messages', addMessage);
 
 // Staff-only actions (Support & Admin)

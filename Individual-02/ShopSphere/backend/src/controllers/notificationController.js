@@ -22,7 +22,7 @@ export async function getNotifications(req, res, next) {
 
 export async function markAsRead(req, res, next) {
   try {
-    const updated = await markNotificationAsRead(req.params.id);
+    const updated = await markNotificationAsRead(req.params.id, req.user._id);
     if (!updated) {
       return res.status(404).json({ success: false, message: 'Notification not found' });
     }

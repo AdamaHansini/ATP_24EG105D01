@@ -21,6 +21,11 @@ export const deliveryService = {
     return response.data?.delivery;
   },
 
+  collectCODPayment: async (id, transactionReference) => {
+    const response = await api.post(`/delivery/${id}/collect-payment`, { transactionReference });
+    return response.data?.payment;
+  },
+
   addTrackingCheckpoint: async (id, checkpointData) => {
     const response = await api.post(`/delivery/${id}/tracking`, checkpointData);
     return response.data?.delivery;
